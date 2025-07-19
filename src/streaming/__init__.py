@@ -1,0 +1,1 @@
+# Streaming package for gesture-controlled avatar project 
