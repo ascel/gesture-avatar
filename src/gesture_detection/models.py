@@ -155,6 +155,10 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
         if feature_array is None:
             return "unknown", 0.0
         
+        # Add batch dimension if needed
+        if len(feature_array.shape) == 1:
+            feature_array = np.expand_dims(feature_array, axis=0)
+        
         # Get prediction
         prediction = self.model.predict(feature_array, verbose=0)
         predicted_class = np.argmax(prediction[0])

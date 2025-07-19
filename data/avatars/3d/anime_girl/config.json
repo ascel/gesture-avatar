@@ -1,0 +1,39 @@
+{
+  "type": "vrm",
+  "model_path": "sample_models/anime_girl.vrm",
+  "animations": {
+    "idle": {
+      "blend_shape": "idle",
+      "duration": 2.0
+    },
+    "fist": {
+      "blend_shape": "angry",
+      "duration": 0.5
+    },
+    "point": {
+      "blend_shape": "point",
+      "duration": 0.3
+    },
+    "peace": {
+      "blend_shape": "peace",
+      "duration": 0.5
+    },
+    "open_hand": {
+      "blend_shape": "happy",
+      "duration": 0.5
+    },
+    "thumbs_up": {
+      "blend_shape": "thumbs_up",
+      "duration": 0.5
+    },
+    "wave": {
+      "blend_shape": "wave",
+      "duration": 1.0
+    }
+  },
+  "colors": {
+    "hair": "#8B4513",
+    "eyes": "#4169E1",
+    "skin": "#FFE4C4"
+  }
+}

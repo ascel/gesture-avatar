@@ -1,0 +1,39 @@
+{
+  "type": "vrm",
+  "model_path": "sample_models/robot_3d.vrm",
+  "animations": {
+    "idle": {
+      "blend_shape": "idle",
+      "duration": 1.0
+    },
+    "fist": {
+      "blend_shape": "combat",
+      "duration": 0.3
+    },
+    "point": {
+      "blend_shape": "point",
+      "duration": 0.2
+    },
+    "peace": {
+      "blend_shape": "peace",
+      "duration": 0.5
+    },
+    "open_hand": {
+      "blend_shape": "open",
+      "duration": 0.3
+    },
+    "thumbs_up": {
+      "blend_shape": "approve",
+      "duration": 0.5
+    },
+    "wave": {
+      "blend_shape": "greet",
+      "duration": 0.8
+    }
+  },
+  "colors": {
+    "body": "#C0C0C0",
+    "eyes": "#00FF00",
+    "accents": "#FF4500"
+  }
+}

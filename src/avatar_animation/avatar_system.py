@@ -26,7 +26,7 @@ class AvatarAnimation:
         self.avatar_type = avatar_type
         self.current_animation = "idle"
         self.animation_frame = 0
-        self.animation_speed = 1.0
+        self.animation_speed = 0.3  # Slower animation for better visibility
         self.transition_duration = 0.5  # seconds
         self.last_animation_change = time.time()
         
@@ -68,13 +68,13 @@ class SpriteBasedAvatar(AvatarAnimation):
         self.config = config or {}
         self.spritesheet = None
         self.sprites = {}
-        self.sprite_size = (64, 64)  # Default sprite size
-        self.frames_per_animation = 8  # Default frames per animation
+        self.sprite_size = (200, 200)  # Updated to match our sample avatars
+        self.frames_per_animation = 8  # Multiple frames for animation
         
         if spritesheet_path:
             self.load_spritesheet(spritesheet_path)
         else:
-            self.create_default_sprites()
+            self.load_sample_avatars()
     
     def load_spritesheet(self, spritesheet_path: str):
         """Load spritesheet and extract sprites."""
@@ -135,6 +135,190 @@ class SpriteBasedAvatar(AvatarAnimation):
         
         print("Created default sprites for testing")
     
+    def load_sample_avatars(self):
+        """Load sample avatars from the data/avatars/2d directory."""
+        try:
+            # Try to load from sample avatars directory
+            avatars_dir = Path("data/avatars/2d")
+            if not avatars_dir.exists():
+                print("Sample avatars directory not found, creating default sprites")
+                self.create_default_sprites()
+                return
+            
+            # Load the first available avatar (robot, alien, or ghost)
+            avatar_options = ["robot", "alien", "ghost"]
+            selected_avatar = None
+            
+            for avatar_name in avatar_options:
+                avatar_dir = avatars_dir / avatar_name
+                if avatar_dir.exists():
+                    selected_avatar = avatar_name
+                    break
+            
+            if selected_avatar is None:
+                print("No sample avatars found, creating default sprites")
+                self.create_default_sprites()
+                return
+            
+            print(f"Loading sample avatar: {selected_avatar}")
+            avatar_dir = avatars_dir / selected_avatar
+            
+            # Load individual gesture sprites
+            gestures = ["idle", "fist", "point", "peace", "open_hand", "thumbs_up", "wave"]
+            
+            for gesture in gestures:
+                sprite_path = avatar_dir / f"{gesture}.png"
+                if sprite_path.exists():
+                    # Load sprite image
+                    sprite_img = Image.open(sprite_path)
+                    sprite_array = np.array(sprite_img)
+                    
+                    # Convert RGBA to RGB if needed
+                    if len(sprite_array.shape) == 3 and sprite_array.shape[2] == 4:
+                        # Create white background
+                        background = np.ones((sprite_array.shape[0], sprite_array.shape[1], 3), dtype=np.uint8) * 255
+                        # Composite RGBA over white background
+                        alpha = sprite_array[:, :, 3:4] / 255.0
+                        sprite_array = (sprite_array[:, :, :3] * alpha + background * (1 - alpha)).astype(np.uint8)
+                    
+                    # Resize sprite to match expected size
+                    if sprite_array.shape[:2] != self.sprite_size:
+                        sprite_array = cv2.resize(sprite_array, self.sprite_size)
+                    
+                    # Create animated frames from the static sprite
+                    animated_frames = self.create_animated_frames(sprite_array, gesture)
+                    self.sprites[gesture] = animated_frames
+                else:
+                    # Create a placeholder sprite for missing gestures
+                    placeholder = np.ones((self.sprite_size[0], self.sprite_size[1], 3), dtype=np.uint8) * 128
+                    animated_frames = self.create_animated_frames(placeholder, gesture)
+                    self.sprites[gesture] = animated_frames
+            
+            print(f"Loaded {len(self.sprites)} gesture sprites for {selected_avatar}")
+            
+        except Exception as e:
+            print(f"Error loading sample avatars: {e}")
+            self.create_default_sprites()
+    
+    def create_animated_frames(self, base_sprite: np.ndarray, gesture: str) -> List[np.ndarray]:
+        """Create animated frames from a base sprite."""
+        frames = []
+        
+        for frame_idx in range(self.frames_per_animation):
+            # Create a copy of the base sprite
+            frame = base_sprite.copy()
+            
+            # Apply animation effects based on gesture
+            if gesture == "idle":
+                # Gentle breathing animation
+                scale = 1.0 + 0.02 * np.sin(frame_idx * 0.5)
+                frame = self.apply_scale(frame, scale)
+                
+            elif gesture == "wave":
+                # Waving animation - rotate slightly
+                angle = 10 * np.sin(frame_idx * 0.8)
+                frame = self.apply_rotation(frame, angle)
+                
+            elif gesture == "thumbs_up":
+                # Thumbs up animation - slight bounce
+                scale = 1.0 + 0.05 * np.sin(frame_idx * 1.0)
+                frame = self.apply_scale(frame, scale)
+                
+            elif gesture == "point":
+                # Pointing animation - slight movement
+                offset_x = 5 * np.sin(frame_idx * 0.6)
+                frame = self.apply_translation(frame, offset_x, 0)
+                
+            elif gesture == "peace":
+                # Peace sign animation - gentle sway
+                angle = 5 * np.sin(frame_idx * 0.7)
+                frame = self.apply_rotation(frame, angle)
+                
+            elif gesture == "open_hand":
+                # Open hand animation - scale up and down
+                scale = 1.0 + 0.03 * np.sin(frame_idx * 0.9)
+                frame = self.apply_scale(frame, scale)
+                
+            elif gesture == "fist":
+                # Fist animation - slight shake
+                angle = 3 * np.sin(frame_idx * 1.2)
+                frame = self.apply_rotation(frame, angle)
+            
+            frames.append(frame)
+        
+        return frames
+    
+    def apply_scale(self, frame: np.ndarray, scale: float) -> np.ndarray:
+        """Apply scaling transformation to frame."""
+        if scale == 1.0:
+            return frame
+        
+        h, w = frame.shape[:2]
+        new_h, new_w = int(h * scale), int(w * scale)
+        
+        # Resize frame
+        resized = cv2.resize(frame, (new_w, new_h))
+        
+        # Pad or crop to maintain original size
+        result = np.ones((h, w, 3), dtype=np.uint8) * 255  # White background
+        
+        if new_h > h:
+            # Crop height
+            start_h = (new_h - h) // 2
+            resized = resized[start_h:start_h + h, :]
+        elif new_h < h:
+            # Pad height
+            pad_h = (h - new_h) // 2
+            result[pad_h:pad_h + new_h, :] = resized
+            return result
+        
+        if new_w > w:
+            # Crop width
+            start_w = (new_w - w) // 2
+            resized = resized[:, start_w:start_w + w]
+        elif new_w < w:
+            # Pad width
+            pad_w = (w - new_w) // 2
+            result[:, pad_w:pad_w + new_w] = resized
+            return result
+        
+        return resized
+    
+    def apply_rotation(self, frame: np.ndarray, angle: float) -> np.ndarray:
+        """Apply rotation transformation to frame."""
+        if abs(angle) < 0.1:
+            return frame
+        
+        h, w = frame.shape[:2]
+        center = (w // 2, h // 2)
+        
+        # Create rotation matrix
+        rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+        
+        # Apply rotation
+        rotated = cv2.warpAffine(frame, rotation_matrix, (w, h), 
+                                borderMode=cv2.BORDER_CONSTANT, 
+                                borderValue=(255, 255, 255))
+        
+        return rotated
+    
+    def apply_translation(self, frame: np.ndarray, offset_x: int, offset_y: int) -> np.ndarray:
+        """Apply translation transformation to frame."""
+        if abs(offset_x) < 1 and abs(offset_y) < 1:
+            return frame
+        
+        h, w = frame.shape[:2]
+        
+        # Create translation matrix
+        translation_matrix = np.float32([[1, 0, offset_x], [0, 1, offset_y]])
+        
+        # Apply translation
+        translated = cv2.warpAffine(frame, translation_matrix, (w, h),
+                                   borderMode=cv2.BORDER_CONSTANT,
+                                   borderValue=(255, 255, 255))
+        
+        return translated
+    
     def update_animation(self, gesture: str, confidence: float) -> str:
         """Update animation based on gesture."""
         current_time = time.time()
@@ -144,7 +328,8 @@ class SpriteBasedAvatar(AvatarAnimation):
             "wave": "wave",
             "thumbs_up": "thumbs_up", 
             "point": "point",
-            "clap": "clap",
+            "peace": "peace",
+            "open_hand": "open_hand",
             "fist": "fist",
             "no_hand": "idle",
             "unknown": "idle"
