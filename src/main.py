@@ -14,7 +14,7 @@ import argparse
 
 # Import project modules
 from gesture_detection.models import GestureDetector
-from avatar_animation.avatar_system import AvatarManager
+from avatar_animation.simple_avatar import SimpleAvatarManager as AvatarManager
 from streaming.obs_integration import StreamManager
 from utils.data_preprocessing import GestureDataPreprocessor
 
@@ -122,7 +122,11 @@ class GestureAvatarDemo:
             print("✓ Avatar manager initialized")
         except Exception as e:
             print(f"✗ Error initializing avatar manager: {e}")
-            return
+            print("Using fallback avatar manager")
+            self.avatar_manager = AvatarManager(
+                avatar_type="2d",
+                config={"confidence_threshold": 0.5}
+            )
         
         # Initialize stream manager
         print("3. Initializing stream manager...")
@@ -222,6 +226,20 @@ class GestureAvatarDemo:
                 # Detect gesture
                 gesture, confidence, additional_info = self.gesture_detector.detect_gesture(frame)
                 
+                # Debug: Print gesture detection (only if it's not "no_hand" or "unknown")
+                if gesture not in ["no_hand", "unknown"] and confidence > 0.5:
+                    # Map gesture numbers to names
+                    gesture_mapping = {
+                        "gesture_0": "fist",
+                        "gesture_1": "open_hand", 
+                        "gesture_2": "peace",
+                        "gesture_3": "point",
+                        "gesture_4": "thumbs_up",
+                        "gesture_5": "wave"
+                    }
+                    mapped_gesture = gesture_mapping.get(gesture, gesture)
+                    print(f"Detected: {mapped_gesture} (confidence: {confidence:.2f})")
+                
                 # Update avatar
                 avatar_frame = self.avatar_manager.update(gesture, confidence)
                 
@@ -231,6 +249,23 @@ class GestureAvatarDemo:
                 
                 # Create display frame
                 display_frame = self.create_display_frame(frame, avatar_frame)
+                
+                # Add gesture detection info to display frame
+                if gesture not in ["no_hand", "unknown"] and confidence > 0.5:
+                    gesture_mapping = {
+                        "gesture_0": "fist",
+                        "gesture_1": "open_hand", 
+                        "gesture_2": "peace",
+                        "gesture_3": "point",
+                        "gesture_4": "thumbs_up",
+                        "gesture_5": "wave"
+                    }
+                    mapped_gesture = gesture_mapping.get(gesture, gesture)
+                    # Add gesture info to the display frame
+                    cv2.putText(display_frame, f"Detected: {mapped_gesture}", 
+                               (10, display_frame.shape[0] - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    cv2.putText(display_frame, f"Confidence: {confidence:.2f}", 
+                               (10, display_frame.shape[0] - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 # Send to OBS if streaming
                 if streaming_active and self.stream_manager:
