@@ -1,0 +1,58 @@
+{
+  "training_date": "2025-07-20T10:37:25.509320",
+  "data_source": "combined",
+  "models_trained": [
+    "feature_model"
+  ],
+  "results": {
+    "feature_model": {
+      "model_type": "feature_based",
+      "training_date": "2025-07-20T10:37:24.083900",
+      "model_path": "..\\data\\models\\feature_gesture_model.h5",
+      "training_history": {
+        "final_accuracy": 0.9944444298744202,
+        "final_val_accuracy": 1.0,
+        "final_loss": 0.0324980802834034,
+        "final_val_loss": 0.017104174941778183,
+        "epochs_trained": 100
+      },
+      "test_results": {
+        "accuracy": 0.98,
+        "macro_avg_f1": 0.9799498746867169,
+        "weighted_avg_f1": 0.9799498746867168
+      },
+      "class_metrics": {
+        "fist": {
+          "precision": 0.9090909090909091,
+          "recall": 1.0,
+          "f1-score": 0.9523809523809523,
+          "support": 10.0
+        },
+        "open_hand": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 10.0
+        },
+        "peace": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 10.0
+        },
+        "point": {
+          "precision": 1.0,
+          "recall": 0.9,
+          "f1-score": 0.9473684210526315,
+          "support": 10.0
+        },
+        "thumbs_up": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 10.0
+        }
+      }
+    }
+  }
+}

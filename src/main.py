@@ -47,6 +47,8 @@ class GestureAvatarDemo:
         self.show_webcam = True
         self.show_avatar = True
         self.show_landmarks = True
+        self.show_landmark_numbers = True
+        self.show_landmark_connections = True
         self.avatar_type = "2d"  # "2d" or "3d"
         
         # Initialize components
@@ -178,6 +180,8 @@ class GestureAvatarDemo:
         print("  'w' - Toggle webcam view")
         print("  'a' - Toggle avatar view")
         print("  'l' - Toggle landmarks")
+        print("  'n' - Toggle landmark numbers")
+        print("  'c' - Toggle landmark connections")
         print("  '1' - Switch to 2D avatar")
         print("  '2' - Switch to 3D avatar")
         print("  's' - Start/stop OBS streaming")
@@ -231,11 +235,10 @@ class GestureAvatarDemo:
                     # Map gesture numbers to names
                     gesture_mapping = {
                         "gesture_0": "fist",
-                        "gesture_1": "open_hand", 
+                        "gesture_1": "open_hand",
                         "gesture_2": "peace",
                         "gesture_3": "point",
-                        "gesture_4": "thumbs_up",
-                        "gesture_5": "wave"
+                        "gesture_4": "thumbs_up"
                     }
                     mapped_gesture = gesture_mapping.get(gesture, gesture)
                     print(f"Detected: {mapped_gesture} (confidence: {confidence:.2f})")
@@ -245,27 +248,10 @@ class GestureAvatarDemo:
                 
                 # Draw landmarks if enabled
                 if self.show_landmarks and additional_info.get("landmarks"):
-                    frame = self.gesture_detector.draw_landmarks(frame, additional_info["landmarks"])
+                    frame = self.draw_enhanced_landmarks(frame, additional_info["landmarks"], gesture, confidence)
                 
                 # Create display frame
                 display_frame = self.create_display_frame(frame, avatar_frame)
-                
-                # Add gesture detection info to display frame
-                if gesture not in ["no_hand", "unknown"] and confidence > 0.5:
-                    gesture_mapping = {
-                        "gesture_0": "fist",
-                        "gesture_1": "open_hand", 
-                        "gesture_2": "peace",
-                        "gesture_3": "point",
-                        "gesture_4": "thumbs_up",
-                        "gesture_5": "wave"
-                    }
-                    mapped_gesture = gesture_mapping.get(gesture, gesture)
-                    # Add gesture info to the display frame
-                    cv2.putText(display_frame, f"Detected: {mapped_gesture}", 
-                               (10, display_frame.shape[0] - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    cv2.putText(display_frame, f"Confidence: {confidence:.2f}", 
-                               (10, display_frame.shape[0] - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 
                 # Send to OBS if streaming
                 if streaming_active and self.stream_manager:
@@ -287,6 +273,12 @@ class GestureAvatarDemo:
                 elif key == ord('l'):
                     self.show_landmarks = not self.show_landmarks
                     print(f"Landmarks: {'ON' if self.show_landmarks else 'OFF'}")
+                elif key == ord('n'):
+                    self.show_landmark_numbers = not self.show_landmark_numbers
+                    print(f"Landmark numbers: {'ON' if self.show_landmark_numbers else 'OFF'}")
+                elif key == ord('c'):
+                    self.show_landmark_connections = not self.show_landmark_connections
+                    print(f"Landmark connections: {'ON' if self.show_landmark_connections else 'OFF'}")
                 elif key == ord('1'):
                     self.avatar_manager.switch_avatar_type("2d")
                     self.avatar_type = "2d"
@@ -390,6 +382,70 @@ class GestureAvatarDemo:
         for text in info_text:
             cv2.putText(frame, text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             y_offset += 25
+        
+        return frame
+    
+    def draw_enhanced_landmarks(self, frame: np.ndarray, landmarks: list, gesture: str, confidence: float) -> np.ndarray:
+        """Draw enhanced hand landmarks with gesture information."""
+        if not landmarks or len(landmarks) < 21:
+            return frame
+        
+        # Draw hand landmarks
+        for i, landmark in enumerate(landmarks):
+            if i < len(landmarks):
+                # Convert normalized coordinates to pixel coordinates
+                h, w, _ = frame.shape
+                x = int(landmark['x'] * w)
+                y = int(landmark['y'] * h)
+                
+                # Different colors for different landmark types
+                if i == 0:  # Wrist
+                    color = (255, 255, 255)  # White
+                    radius = 8
+                elif i in [4, 8, 12, 16, 20]:  # Fingertips
+                    color = (0, 255, 0)  # Green
+                    radius = 6
+                elif i in [2, 5, 9, 13, 17]:  # Finger bases
+                    color = (255, 0, 0)  # Red
+                    radius = 5
+                else:  # Other landmarks
+                    color = (0, 255, 255)  # Cyan
+                    radius = 4
+                
+                # Draw landmark circle
+                cv2.circle(frame, (x, y), radius, color, -1)
+                
+                # Draw landmark number for debugging
+                if self.show_landmark_numbers:
+                    cv2.putText(frame, str(i), (x + 5, y - 5), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
+        
+        # Draw hand connections
+        connections = [
+            # Thumb
+            (0, 1), (1, 2), (2, 3), (3, 4),
+            # Index finger
+            (0, 5), (5, 6), (6, 7), (7, 8),
+            # Middle finger
+            (0, 9), (9, 10), (10, 11), (11, 12),
+            # Ring finger
+            (0, 13), (13, 14), (14, 15), (15, 16),
+            # Pinky
+            (0, 17), (17, 18), (18, 19), (19, 20),
+            # Palm connections
+            (5, 9), (9, 13), (13, 17)
+        ]
+        
+        if self.show_landmark_connections:
+            for connection in connections:
+                if connection[0] < len(landmarks) and connection[1] < len(landmarks):
+                    h, w, _ = frame.shape
+                    x1 = int(landmarks[connection[0]]['x'] * w)
+                    y1 = int(landmarks[connection[0]]['y'] * h)
+                    x2 = int(landmarks[connection[1]]['x'] * w)
+                    y2 = int(landmarks[connection[1]]['y'] * h)
+                    
+                    cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
         
         return frame
     

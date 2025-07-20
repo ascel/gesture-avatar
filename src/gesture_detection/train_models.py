@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 
-from models import FeatureBasedGestureModel, ImageBasedGestureModel
+from .models import FeatureBasedGestureModel, ImageBasedGestureModel
 from ..utils.data_preprocessing import GestureDataPreprocessor
 
 
