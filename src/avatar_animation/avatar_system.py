@@ -396,7 +396,7 @@ class SpriteBasedAvatar(AvatarAnimation):
         
         # Check if we should change animation
         if (target_animation != self.current_animation and 
-            confidence > self.config.get('confidence_threshold', 0.6) and
+            confidence > self.config.get('confidence_threshold', 0.2) and
             current_time - self.last_animation_change > self.transition_duration):
             
             self.current_animation = target_animation

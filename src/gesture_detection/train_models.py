@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 
-from .models import FeatureBasedGestureModel, ImageBasedGestureModel
+from .models import FeatureBasedGestureModel, ImageBasedGestureModel, EfficientNetGestureModel
 from ..utils.data_preprocessing import GestureDataPreprocessor
 
 
@@ -229,6 +229,148 @@ def train_image_model(data_dir: str = "data/raw",
         return None, None
 
 
+def train_efficientnet_model(data_dir: str = "data/raw",
+                            model_save_dir: str = "data/models",
+                            epochs: int = 50):
+    """Train EfficientNet-based image gesture recognition model."""
+    print("🚀 Training EfficientNet Image-Based Gesture Model")
+    print("=" * 60)
+    preprocessor = GestureDataPreprocessor(raw_data_dir=data_dir)
+    try:
+        train_generator, val_generator, class_indices = preprocessor.create_image_dataset()
+        print(f"Training samples: {train_generator.samples}")
+        print(f"Validation samples: {val_generator.samples}")
+        print(f"Classes: {list(class_indices.keys())}")
+        model = EfficientNetGestureModel()
+        model.class_indices = class_indices
+        history = model.train(train_generator, val_generator, epochs)
+        model_save_path = Path(model_save_dir) / "efficientnet_gesture_model.h5"
+        model_save_path.parent.mkdir(parents=True, exist_ok=True)
+        model.save_model(str(model_save_path))
+        results = {
+            'model_type': 'efficientnet_image_based',
+            'architecture': 'EfficientNetB0',
+            'training_date': datetime.now().isoformat(),
+            'model_path': str(model_save_path),
+            'class_indices': class_indices,
+            'training_history': {
+                'final_accuracy': float(history.history['accuracy'][-1]),
+                'final_val_accuracy': float(history.history['val_accuracy'][-1]),
+                'final_loss': float(history.history['loss'][-1]),
+                'final_val_loss': float(history.history['val_loss'][-1]),
+                'epochs_trained': len(history.history['accuracy']),
+                'best_val_accuracy': float(max(history.history['val_accuracy'])),
+                'best_accuracy': float(max(history.history['accuracy']))
+            },
+            'optimization_features': [
+                'EfficientNetB0',
+                'GlobalAveragePooling',
+                'Adam optimizer',
+                'EarlyStopping',
+                'ModelCheckpoint',
+                'ReduceLROnPlateau'
+            ]
+        }
+        results_path = model_save_path.parent / "efficientnet_model_results.json"
+        with open(results_path, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"\n✅ EfficientNet model training completed!")
+        print(f"📁 Model saved to: {model_save_path}")
+        print(f"📊 Results saved to: {results_path}")
+        print(f"🏆 Best validation accuracy: {results['training_history']['best_val_accuracy']:.4f}")
+        print(f"🎯 Final training accuracy: {results['training_history']['final_accuracy']:.4f}")
+        return model, results
+    except Exception as e:
+        print(f"Error training EfficientNet model: {e}")
+        print("Make sure you have collected image data first.")
+        return None, None
+
+
+def train_efficientnet1d_model(data_dir: str = "data/processed", 
+                              model_save_dir: str = "data/models", 
+                              epochs: int = 200, 
+                              batch_size: int = 32):
+    """Train EfficientNet1D-based feature gesture recognition model."""
+    print("🚀 Training EfficientNet1D Landmark Gesture Model")
+    print("=" * 60)
+    data_path = Path(data_dir)
+    X_train = np.load(data_path / "X_train.npy")
+    X_val = np.load(data_path / "X_val.npy")
+    X_test = np.load(data_path / "X_test.npy")
+    y_train = np.load(data_path / "y_train.npy")
+    y_val = np.load(data_path / "y_val.npy")
+    y_test = np.load(data_path / "y_test.npy")
+    feature_scaler = None
+    label_encoder = None
+    scaler_path = data_path / "feature_scaler.pkl"
+    encoder_path = data_path / "label_encoder.pkl"
+    if scaler_path.exists():
+        import joblib
+        feature_scaler = joblib.load(scaler_path)
+    if encoder_path.exists():
+        import joblib
+        label_encoder = joblib.load(encoder_path)
+    from .models import EfficientNet1DLandmarkModel
+    model = EfficientNet1DLandmarkModel()
+    model.feature_scaler = feature_scaler
+    model.label_encoder = label_encoder
+    history = model.train(X_train, y_train, X_val, y_val, epochs, batch_size)
+    print("\nEvaluating model...")
+    X_test_reshaped = np.expand_dims(X_test, axis=-1)
+    y_pred = model.model.predict(X_test_reshaped)
+    y_pred_classes = np.argmax(y_pred, axis=1)
+    if label_encoder is not None:
+        target_names = label_encoder.classes_
+    else:
+        target_names = [f"gesture_{i}" for i in range(len(np.unique(y_test)))]
+    from sklearn.metrics import classification_report
+    report = classification_report(y_test, y_pred_classes, target_names=target_names, output_dict=True)
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred_classes, target_names=target_names))
+    model_save_path = Path(model_save_dir) / "efficientnet1d_gesture_model.h5"
+    model_save_path.parent.mkdir(parents=True, exist_ok=True)
+    model.save_model(str(model_save_path))
+    results = {
+        'model_type': 'efficientnet1d_feature_based',
+        'architecture': 'EfficientNet1D-inspired',
+        'training_date': datetime.now().isoformat(),
+        'model_path': str(model_save_path),
+        'training_history': {
+            'final_accuracy': float(history.history['accuracy'][-1]),
+            'final_val_accuracy': float(history.history['val_accuracy'][-1]),
+            'final_loss': float(history.history['loss'][-1]),
+            'final_val_loss': float(history.history['val_loss'][-1]),
+            'epochs_trained': len(history.history['accuracy']),
+            'best_val_accuracy': float(max(history.history['val_accuracy'])),
+            'best_accuracy': float(max(history.history['accuracy']))
+        },
+        'test_results': {
+            'accuracy': float(report['accuracy']),
+            'macro_avg_f1': float(report['macro avg']['f1-score']),
+            'weighted_avg_f1': float(report['weighted avg']['f1-score'])
+        },
+        'class_metrics': {name: metrics for name, metrics in report.items() if name not in ['accuracy', 'macro avg', 'weighted avg']},
+        'optimization_features': [
+            '1D Conv blocks',
+            'Batch normalization',
+            'GlobalAveragePooling1D',
+            'Adam optimizer',
+            'EarlyStopping',
+            'ModelCheckpoint',
+            'ReduceLROnPlateau'
+        ]
+    }
+    results_path = model_save_path.parent / "efficientnet1d_model_results.json"
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    print(f"\n✅ EfficientNet1D model training completed!")
+    print(f"📁 Model saved to: {model_save_path}")
+    print(f"📊 Results saved to: {results_path}")
+    print(f"🏆 Best validation accuracy: {results['training_history']['best_val_accuracy']:.4f}")
+    print(f"🎯 Test accuracy: {results['test_results']['accuracy']:.4f}")
+    return model, results
+
+
 def plot_training_history(history, save_path: Path):
     """Plot training history."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
@@ -356,15 +498,36 @@ def main():
             print(f"  🏆 Best validation accuracy: {image_results['training_history']['best_val_accuracy']:.4f}")
             print(f"  🎯 Final training accuracy: {image_results['training_history']['final_accuracy']:.4f}")
         
+        # Train EfficientNet model (if data available)
+        print("\n3. 🦾 Training EfficientNet Image-Based Model...")
+        efficientnet_model, efficientnet_results = train_efficientnet_model(
+            epochs=50
+        )
+        if efficientnet_results:
+            print(f"✅ EfficientNet model training completed!")
+            print(f"  🏆 Best validation accuracy: {efficientnet_results['training_history']['best_val_accuracy']:.4f}")
+            print(f"  🎯 Final training accuracy: {efficientnet_results['training_history']['final_accuracy']:.4f}")
+        
+        # Train EfficientNet1D model (if data available)
+        print("\n4. 🦾 Training EfficientNet1D Landmark Model...")
+        efficientnet1d_model, efficientnet1d_results = train_efficientnet1d_model(
+            epochs=config['feature_model']['epochs'],
+            batch_size=config['feature_model']['batch_size']
+        )
+        if efficientnet1d_results:
+            print(f"✅ EfficientNet1D model training completed!")
+            print(f"  🏆 Best validation accuracy: {efficientnet1d_results['training_history']['best_val_accuracy']:.4f}")
+            print(f"  🎯 Test accuracy: {efficientnet1d_results['test_results']['accuracy']:.4f}")
+        
         # Generate summary report
-        print("\n3. 📊 Generating Summary Report...")
+        print("\n5. 📊 Generating Summary Report...")
         generate_training_summary(feature_results, image_results)
         
         print("\n🎉 Optimized training completed successfully!")
         print("\n📋 Next steps:")
         print("1. Test optimized models: python test_optimized_model.py")
         print("2. Run enhanced demo: python src/main.py")
-        print("3. Check performance: python scripts/test_retrained_model.py")
+        print("3. Check performance plots and confusion matrices in data/models/")
         
     except Exception as e:
         print(f"Error during training: {e}")

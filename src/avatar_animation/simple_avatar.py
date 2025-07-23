@@ -36,7 +36,7 @@ class SimpleAvatar:
         
         # Update gesture if confidence is high enough (lowered threshold for better responsiveness)
         if (mapped_gesture != self.current_gesture and 
-            confidence > 0.4 and 
+            confidence > 0.2 and 
             current_time - self.last_gesture_change > 0.2):
             self.current_gesture = mapped_gesture
             self.last_gesture_change = current_time

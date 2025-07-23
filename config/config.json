@@ -2,7 +2,7 @@
   "gesture_detection": {
     "model_type": "feature",
     "model_path": "data/models/sample_gesture_model.h5",
-    "confidence_threshold": 0.7,
+    "confidence_threshold": 0.2,
     "smoothing_window": 5
   },
   "avatar_animation": {

@@ -100,10 +100,13 @@ class GestureAvatarDemo:
         print("1. Initializing gesture detector...")
         try:
             model_path = self.get_best_model_path()
+            model_type = self.config["gesture_detection"].get("model_type", "feature")
+            model_backbone = self.config["gesture_detection"].get("model_backbone", "resnet")
             self.gesture_detector = GestureDetector(
-                model_type=self.config["gesture_detection"]["model_type"],
+                model_type=model_type,
                 model_path=model_path,
-                config=self.config["gesture_detection"]
+                config=self.config["gesture_detection"],
+                model_backbone=model_backbone
             )
             print("✓ Gesture detector initialized")
         except Exception as e:
@@ -231,7 +234,7 @@ class GestureAvatarDemo:
                 gesture, confidence, additional_info = self.gesture_detector.detect_gesture(frame)
                 
                 # Debug: Print gesture detection (only if it's not "no_hand" or "unknown")
-                if gesture not in ["no_hand", "unknown"] and confidence > 0.4:
+                if gesture not in ["no_hand", "unknown"] and confidence > 0.2:
                     # Map gesture numbers to names
                     gesture_mapping = {
                         "gesture_0": "fist",
@@ -487,6 +490,8 @@ def main():
                        help="Train gesture recognition models")
     parser.add_argument("--test-obs", action="store_true",
                        help="Test OBS integration")
+    parser.add_argument("--model-backbone", choices=["resnet", "efficientnet"], default="resnet",
+                       help="Model backbone to use for gesture detection (resnet or efficientnet)")
     
     args = parser.parse_args()
     
@@ -516,6 +521,7 @@ def main():
     
     # Start demo
     demo = GestureAvatarDemo(args.config)
+    demo.config['gesture_detection']['model_backbone'] = args.model_backbone
     demo.start_demo()
 
 
