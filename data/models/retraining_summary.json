@@ -1,23 +1,24 @@
 {
-  "training_date": "2025-07-23T20:18:26.577195",
+  "training_date": "2025-07-23T21:07:43.941041",
   "data_source": "combined",
   "models_trained": [
-    "feature_model"
+    "feature_model",
+    "efficientnet1d_model"
   ],
   "results": {
     "feature_model": {
       "model_type": "resnet_feature_based",
       "architecture": "ResNet-inspired with attention",
-      "training_date": "2025-07-23T20:18:25.313727",
+      "training_date": "2025-07-23T21:07:29.564615",
       "model_path": "data\\models\\feature_gesture_model.h5",
       "training_history": {
         "final_accuracy": 0.9763888716697693,
         "final_val_accuracy": 1.0,
-        "final_loss": 0.11788945645093918,
-        "final_val_loss": 0.005211042705923319,
-        "epochs_trained": 37,
+        "final_loss": 0.1240985244512558,
+        "final_val_loss": 0.0050112782046198845,
+        "epochs_trained": 31,
         "best_val_accuracy": 1.0,
-        "best_accuracy": 0.9916666746139526
+        "best_accuracy": 0.9833333492279053
       },
       "test_results": {
         "accuracy": 1.0,
@@ -63,6 +64,67 @@
         "AdamW optimizer",
         "Class balancing",
         "Advanced callbacks"
+      ]
+    },
+    "efficientnet1d_model": {
+      "model_type": "efficientnet1d_feature_based",
+      "architecture": "EfficientNet1D-inspired",
+      "training_date": "2025-07-23T21:07:43.939041",
+      "model_path": "data\\models\\efficientnet1d_gesture_model.h5",
+      "training_history": {
+        "final_accuracy": 1.0,
+        "final_val_accuracy": 1.0,
+        "final_loss": 0.0008528557373210788,
+        "final_val_loss": 0.0015537331346422434,
+        "epochs_trained": 95,
+        "best_val_accuracy": 1.0,
+        "best_accuracy": 1.0
+      },
+      "test_results": {
+        "accuracy": 1.0,
+        "macro_avg_f1": 1.0,
+        "weighted_avg_f1": 1.0
+      },
+      "class_metrics": {
+        "fist": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 40.0
+        },
+        "open_hand": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 40.0
+        },
+        "peace": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 40.0
+        },
+        "point": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 40.0
+        },
+        "thumbs_up": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 40.0
+        }
+      },
+      "optimization_features": [
+        "1D Conv blocks",
+        "Batch normalization",
+        "GlobalAveragePooling1D",
+        "Adam optimizer",
+        "EarlyStopping",
+        "ModelCheckpoint",
+        "ReduceLROnPlateau"
       ]
     }
   }
