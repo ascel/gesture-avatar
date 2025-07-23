@@ -198,13 +198,20 @@ class GestureDataPreprocessor:
                     'z': features[i+2]
                 })
             
-            # Extract hand features
+            # Extract hand features for original sample
             hand_features = self.extract_hand_features(landmarks)
             if hand_features is None:
                 continue
-            
             feature_data.append(list(hand_features.values()))
             labels.append(row['gesture'])
+
+            # Augment and extract features for each augmented sample
+            augmented_landmarks_list = self.augment_landmarks(landmarks, num_augmentations=3)
+            for aug_landmarks in augmented_landmarks_list:
+                aug_features = self.extract_hand_features(aug_landmarks)
+                if aug_features is not None:
+                    feature_data.append(list(aug_features.values()))
+                    labels.append(row['gesture'])
         
         # Convert to numpy arrays
         X = np.array(feature_data)

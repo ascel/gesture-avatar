@@ -19,11 +19,11 @@ from ..utils.data_preprocessing import GestureDataPreprocessor
 
 def train_feature_model(data_dir: str = "data/processed", 
                        model_save_dir: str = "data/models",
-                       epochs: int = 100,
+                       epochs: int = 200,
                        batch_size: int = 32):
-    """Train feature-based gesture recognition model."""
-    print("Training Feature-Based Gesture Model")
-    print("====================================")
+    """Train optimized ResNet-inspired feature-based gesture recognition model."""
+    print("🚀 Training Optimized ResNet Feature-Based Gesture Model")
+    print("=" * 60)
     
     # Load preprocessed data
     data_path = Path(data_dir)
@@ -58,8 +58,15 @@ def train_feature_model(data_dir: str = "data/processed",
     model.feature_scaler = feature_scaler
     model.label_encoder = label_encoder
     
-    # Train model
-    print("\nTraining model...")
+    # Train model with optimized settings
+    print("\n🚀 Starting optimized training...")
+    print("   • Using ResNet-inspired architecture")
+    print("   • Residual connections for better gradient flow")
+    print("   • Attention mechanisms for feature focus")
+    print("   • Advanced optimization with AdamW")
+    print("   • Class balancing for imbalanced datasets")
+    print()
+    
     history = model.train(X_train, y_train, X_val, y_val, epochs, batch_size)
     
     # Evaluate model
@@ -85,9 +92,10 @@ def train_feature_model(data_dir: str = "data/processed",
     
     model.save_model(str(model_save_path))
     
-    # Save training results
+    # Save training results with enhanced metrics
     results = {
-        'model_type': 'feature_based',
+        'model_type': 'resnet_feature_based',
+        'architecture': 'ResNet-inspired with attention',
         'training_date': datetime.now().isoformat(),
         'model_path': str(model_save_path),
         'training_history': {
@@ -95,7 +103,9 @@ def train_feature_model(data_dir: str = "data/processed",
             'final_val_accuracy': float(history.history['val_accuracy'][-1]),
             'final_loss': float(history.history['loss'][-1]),
             'final_val_loss': float(history.history['val_loss'][-1]),
-            'epochs_trained': len(history.history['accuracy'])
+            'epochs_trained': len(history.history['accuracy']),
+            'best_val_accuracy': float(max(history.history['val_accuracy'])),
+            'best_accuracy': float(max(history.history['accuracy']))
         },
         'test_results': {
             'accuracy': float(report['accuracy']),
@@ -103,7 +113,15 @@ def train_feature_model(data_dir: str = "data/processed",
             'weighted_avg_f1': float(report['weighted avg']['f1-score'])
         },
         'class_metrics': {name: metrics for name, metrics in report.items() 
-                         if name not in ['accuracy', 'macro avg', 'weighted avg']}
+                         if name not in ['accuracy', 'macro avg', 'weighted avg']},
+        'optimization_features': [
+            'Residual connections',
+            'Attention mechanisms', 
+            'Batch normalization',
+            'AdamW optimizer',
+            'Class balancing',
+            'Advanced callbacks'
+        ]
     }
     
     results_path = model_save_path.parent / "feature_model_results.json"
@@ -117,18 +135,21 @@ def train_feature_model(data_dir: str = "data/processed",
     plot_confusion_matrix(y_test, y_pred_classes, target_names, 
                          model_save_path.parent / "feature_confusion_matrix.png")
     
-    print(f"\nModel saved to: {model_save_path}")
-    print(f"Results saved to: {results_path}")
+    print(f"\n✅ Optimized model training completed!")
+    print(f"📁 Model saved to: {model_save_path}")
+    print(f"📊 Results saved to: {results_path}")
+    print(f"🏆 Best validation accuracy: {results['training_history']['best_val_accuracy']:.4f}")
+    print(f"🎯 Test accuracy: {results['test_results']['accuracy']:.4f}")
     
     return model, results
 
 
 def train_image_model(data_dir: str = "data/raw",
                      model_save_dir: str = "data/models",
-                     epochs: int = 50):
-    """Train image-based gesture recognition model."""
-    print("Training Image-Based Gesture Model")
-    print("==================================")
+                     epochs: int = 100):
+    """Train optimized ResNet-inspired image-based gesture recognition model."""
+    print("🚀 Training Optimized ResNet Image-Based Gesture Model")
+    print("=" * 60)
     
     # Initialize preprocessor to create image dataset
     preprocessor = GestureDataPreprocessor(raw_data_dir=data_dir)
@@ -144,8 +165,15 @@ def train_image_model(data_dir: str = "data/raw",
         # Initialize model
         model = ImageBasedGestureModel()
         
-        # Train model
-        print("\nTraining model...")
+        # Train model with optimized settings
+        print("\n🚀 Starting optimized image model training...")
+        print("   • Using ResNet-inspired 2D architecture")
+        print("   • Convolutional residual connections")
+        print("   • Multi-head attention mechanisms")
+        print("   • Advanced optimization with AdamW")
+        print("   • Progressive feature refinement")
+        print()
+        
         history = model.train(train_generator, val_generator, epochs)
         
         # Save model
@@ -154,9 +182,10 @@ def train_image_model(data_dir: str = "data/raw",
         
         model.save_model(str(model_save_path))
         
-        # Save training results
+        # Save training results with enhanced metrics
         results = {
-            'model_type': 'image_based',
+            'model_type': 'resnet_image_based',
+            'architecture': 'ResNet-inspired 2D with multi-head attention',
             'training_date': datetime.now().isoformat(),
             'model_path': str(model_save_path),
             'class_indices': class_indices,
@@ -165,8 +194,18 @@ def train_image_model(data_dir: str = "data/raw",
                 'final_val_accuracy': float(history.history['val_accuracy'][-1]),
                 'final_loss': float(history.history['loss'][-1]),
                 'final_val_loss': float(history.history['val_loss'][-1]),
-                'epochs_trained': len(history.history['accuracy'])
-            }
+                'epochs_trained': len(history.history['accuracy']),
+                'best_val_accuracy': float(max(history.history['val_accuracy'])),
+                'best_accuracy': float(max(history.history['accuracy']))
+            },
+            'optimization_features': [
+                '2D Residual connections',
+                'Multi-head attention (4 heads)',
+                'Convolutional layers',
+                'Batch normalization',
+                'AdamW optimizer',
+                'Progressive feature refinement'
+            ]
         }
         
         results_path = model_save_path.parent / "image_model_results.json"
@@ -176,8 +215,11 @@ def train_image_model(data_dir: str = "data/raw",
         # Plot training history
         plot_training_history(history, model_save_path.parent / "image_training_history.png")
         
-        print(f"\nModel saved to: {model_save_path}")
-        print(f"Results saved to: {results_path}")
+        print(f"\n✅ Optimized image model training completed!")
+        print(f"📁 Model saved to: {model_save_path}")
+        print(f"📊 Results saved to: {results_path}")
+        print(f"🏆 Best validation accuracy: {results['training_history']['best_val_accuracy']:.4f}")
+        print(f"🎯 Final training accuracy: {results['training_history']['final_accuracy']:.4f}")
         
         return model, results
         
@@ -266,52 +308,63 @@ def evaluate_model_performance(model_path: str, test_data_path: str = "data/proc
 
 
 def main():
-    """Main training function."""
-    print("Gesture Recognition Model Training")
-    print("==================================")
+    """Main training function for optimized ResNet-inspired models."""
+    print("🚀 Optimized ResNet Gesture Recognition Model Training")
+    print("=" * 60)
+    print("Features:")
+    print("  • ResNet-inspired architectures")
+    print("  • Residual connections for better gradient flow")
+    print("  • Attention mechanisms for feature focus")
+    print("  • Advanced optimization with AdamW")
+    print("  • Class balancing for imbalanced datasets")
+    print("  • Smart callbacks and early stopping")
+    print()
     
-    # Configuration
+    # Configuration for optimized models
     config = {
         'feature_model': {
-            'epochs': 100,
+            'epochs': 200,  # More epochs for ResNet training
             'batch_size': 32
         },
         'image_model': {
-            'epochs': 50
+            'epochs': 100  # More epochs for ResNet training
         }
     }
     
     try:
         # Train feature-based model
-        print("\n1. Training Feature-Based Model...")
+        print("\n1. 🎯 Training Optimized Feature-Based Model...")
         feature_model, feature_results = train_feature_model(
             epochs=config['feature_model']['epochs'],
             batch_size=config['feature_model']['batch_size']
         )
         
         if feature_results:
-            print(f"✓ Feature model training completed!")
-            print(f"  Final accuracy: {feature_results['test_results']['accuracy']:.4f}")
-            print(f"  F1 score: {feature_results['test_results']['macro_avg_f1']:.4f}")
+            print(f"✅ Optimized feature model training completed!")
+            print(f"  🏆 Best validation accuracy: {feature_results['training_history']['best_val_accuracy']:.4f}")
+            print(f"  🎯 Test accuracy: {feature_results['test_results']['accuracy']:.4f}")
+            print(f"  📊 F1 score: {feature_results['test_results']['macro_avg_f1']:.4f}")
         
         # Train image-based model (if data available)
-        print("\n2. Training Image-Based Model...")
+        print("\n2. 🖼️  Training Optimized Image-Based Model...")
         image_model, image_results = train_image_model(
             epochs=config['image_model']['epochs']
         )
         
         if image_results:
-            print(f"✓ Image model training completed!")
-            print(f"  Final accuracy: {image_results['training_history']['final_accuracy']:.4f}")
+            print(f"✅ Optimized image model training completed!")
+            print(f"  🏆 Best validation accuracy: {image_results['training_history']['best_val_accuracy']:.4f}")
+            print(f"  🎯 Final training accuracy: {image_results['training_history']['final_accuracy']:.4f}")
         
         # Generate summary report
-        print("\n3. Generating Summary Report...")
+        print("\n3. 📊 Generating Summary Report...")
         generate_training_summary(feature_results, image_results)
         
-        print("\n✓ Training completed successfully!")
-        print("\nNext steps:")
-        print("1. Test models: python src/gesture_detection/test_models.py")
-        print("2. Run demo: python src/main.py")
+        print("\n🎉 Optimized training completed successfully!")
+        print("\n📋 Next steps:")
+        print("1. Test optimized models: python test_optimized_model.py")
+        print("2. Run enhanced demo: python src/main.py")
+        print("3. Check performance: python scripts/test_retrained_model.py")
         
     except Exception as e:
         print(f"Error during training: {e}")
@@ -319,25 +372,38 @@ def main():
 
 
 def generate_training_summary(feature_results, image_results):
-    """Generate a summary report of training results."""
+    """Generate a summary report of optimized ResNet training results."""
     summary = {
         'training_date': datetime.now().isoformat(),
+        'architecture_type': 'ResNet-inspired with attention',
         'models_trained': [],
-        'overall_performance': {}
+        'overall_performance': {},
+        'optimization_features': [
+            'Residual connections',
+            'Attention mechanisms',
+            'Batch normalization', 
+            'AdamW optimizer',
+            'Class balancing',
+            'Advanced callbacks'
+        ]
     }
     
     if feature_results:
         summary['models_trained'].append({
-            'type': 'feature_based',
+            'type': 'resnet_feature_based',
+            'architecture': feature_results.get('architecture', 'ResNet-inspired with attention'),
             'accuracy': feature_results['test_results']['accuracy'],
             'f1_score': feature_results['test_results']['macro_avg_f1'],
+            'best_val_accuracy': feature_results['training_history']['best_val_accuracy'],
             'model_path': feature_results['model_path']
         })
     
     if image_results:
         summary['models_trained'].append({
-            'type': 'image_based',
+            'type': 'resnet_image_based',
+            'architecture': image_results.get('architecture', 'ResNet-inspired 2D with multi-head attention'),
             'accuracy': image_results['training_history']['final_accuracy'],
+            'best_val_accuracy': image_results['training_history']['best_val_accuracy'],
             'model_path': image_results['model_path']
         })
     
@@ -360,22 +426,28 @@ def generate_training_summary(feature_results, image_results):
     with open(summary_path, 'w') as f:
         json.dump(summary, f, indent=2)
     
-    print(f"Training summary saved to: {summary_path}")
+    print(f"📊 Optimized training summary saved to: {summary_path}")
     
     # Print summary
-    print("\nTraining Summary:")
-    print("=================")
+    print("\n🏆 Optimized Training Summary:")
+    print("=" * 40)
     for model in summary['models_trained']:
-        print(f"{model['type']}:")
-        print(f"  Accuracy: {model['accuracy']:.4f}")
+        print(f"\n{model['type'].replace('_', ' ').title()}:")
+        print(f"  🏗️  Architecture: {model['architecture']}")
+        print(f"  🎯 Accuracy: {model['accuracy']:.4f}")
+        print(f"  🏆 Best Val Accuracy: {model['best_val_accuracy']:.4f}")
         if 'f1_score' in model:
-            print(f"  F1 Score: {model['f1_score']:.4f}")
+            print(f"  📊 F1 Score: {model['f1_score']:.4f}")
     
     if summary['overall_performance']:
-        print(f"\nOverall Performance:")
-        print(f"  Average Accuracy: {summary['overall_performance']['avg_accuracy']:.4f}")
-        print(f"  Average F1 Score: {summary['overall_performance']['avg_f1_score']:.4f}")
-        print(f"  Best Model: {summary['overall_performance']['best_model']}")
+        print(f"\n📈 Overall Performance:")
+        print(f"  📊 Average Accuracy: {summary['overall_performance']['avg_accuracy']:.4f}")
+        print(f"  🎯 Average F1 Score: {summary['overall_performance']['avg_f1_score']:.4f}")
+        print(f"  🏆 Best Model: {summary['overall_performance']['best_model']}")
+    
+    print(f"\n🚀 Optimization Features:")
+    for feature in summary['optimization_features']:
+        print(f"  • {feature}")
 
 
 if __name__ == "__main__":

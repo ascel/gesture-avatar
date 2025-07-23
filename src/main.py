@@ -231,7 +231,7 @@ class GestureAvatarDemo:
                 gesture, confidence, additional_info = self.gesture_detector.detect_gesture(frame)
                 
                 # Debug: Print gesture detection (only if it's not "no_hand" or "unknown")
-                if gesture not in ["no_hand", "unknown"] and confidence > 0.5:
+                if gesture not in ["no_hand", "unknown"] and confidence > 0.4:
                     # Map gesture numbers to names
                     gesture_mapping = {
                         "gesture_0": "fist",

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Model Retraining Script
+Model Retraining Script with GPU Support
 
 This script retrains the gesture recognition model using the expanded dataset
-from multiple sources (raw, synthetic, external).
+from multiple sources (raw, synthetic, external) with GPU acceleration.
 
 Usage:
+    conda run -n py310 python scripts/retrain_model.py [--data-source expanded|raw|combined]
+    or
     python scripts/retrain_model.py [--data-source expanded|raw|combined]
 """
 
@@ -23,6 +25,46 @@ warnings.filterwarnings('ignore')
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
+def configure_gpu():
+    """Configure GPU settings for optimal performance."""
+    try:
+        import tensorflow as tf
+        print("🔍 Checking GPU availability...")
+        
+        # Check if GPU is available
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            print(f"🚀 Found {len(gpus)} GPU(s): {[gpu.name for gpu in gpus]}")
+            
+            # Enable memory growth to avoid allocating all GPU memory at once
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+                print(f"   ✅ Memory growth enabled for {gpu.name}")
+            
+            # Set mixed precision for faster training
+            try:
+                tf.keras.mixed_precision.set_global_policy('mixed_float16')
+                print("   ✅ Mixed precision enabled (float16)")
+            except Exception as e:
+                print(f"   ⚠️  Mixed precision failed: {e}")
+            
+            print("✅ GPU acceleration configured successfully!")
+            return True
+        else:
+            print("⚠️  No GPU found, using CPU")
+            print("   💡 To enable GPU support:")
+            print("   • Install tensorflow-gpu: conda install tensorflow-gpu -c conda-forge")
+            print("   • Or install CUDA toolkit and cuDNN")
+            return False
+    except ImportError:
+        print("⚠️  TensorFlow not installed, using CPU")
+        print("   💡 Install with: conda install tensorflow -c conda-forge")
+        return False
+    except Exception as e:
+        print(f"⚠️  GPU configuration failed: {e}")
+        print("   Continuing with CPU")
+        return False
+
 try:
     from gesture_detection.train_models import train_feature_model, train_image_model
     from utils.data_preprocessing import GestureDataPreprocessor
@@ -36,9 +78,12 @@ except ImportError:
 class ModelRetrainer:
     def __init__(self, data_source="expanded"):
         self.data_source = data_source
-        self.base_path = Path("../data")
+        self.base_path = Path("data")
         self.models_path = self.base_path / "models"
         self.models_path.mkdir(exist_ok=True)
+        
+        # Configure GPU acceleration
+        self.gpu_available = configure_gpu()
         
         # Data paths
         self.raw_path = self.base_path / "raw"
@@ -58,7 +103,7 @@ class ModelRetrainer:
         # Check raw data
         if self.raw_path.exists():
             raw_samples = sum(len(list((self.raw_path / gesture).glob('*.json'))) 
-                            for gesture in ['clap', 'fist', 'point', 'thumbs_up', 'wave'] 
+                            for gesture in ['peace', 'fist', 'point', 'thumbs_up', 'open_hand'] 
                             if (self.raw_path / gesture).exists())
             data_sources['raw'] = raw_samples
             print(f"  📁 Raw data: {raw_samples} samples")
@@ -285,10 +330,16 @@ class ModelRetrainer:
             print(f"❌ Preprocessing failed: {e}")
             return False
     
-    def train_feature_model(self, epochs=100, batch_size=32):
-        """Train the feature-based model."""
-        print("\n🧠 Training Feature-Based Model")
-        print("=" * 50)
+    def train_feature_model(self, epochs=200, batch_size=32):
+        """Train the optimized feature-based model with GPU acceleration."""
+        print("\n🧠 Training Optimized Feature-Based Model")
+        print("=" * 60)
+        print(f"🚀 GPU acceleration: {'Enabled' if self.gpu_available else 'Disabled'}")
+        print(f"📊 Training parameters:")
+        print(f"   • Epochs: {epochs}")
+        print(f"   • Batch size: {batch_size}")
+        print(f"   • Data source: {self.data_source}")
+        print()
         
         try:
             model, results = train_feature_model(
@@ -310,10 +361,15 @@ class ModelRetrainer:
             print(f"❌ Feature model training failed: {e}")
             return None, None
     
-    def train_image_model(self, epochs=50):
-        """Train the image-based model."""
-        print("\n🖼️  Training Image-Based Model")
-        print("=" * 50)
+    def train_image_model(self, epochs=100):
+        """Train the optimized image-based model with GPU acceleration."""
+        print("\n🖼️  Training Optimized Image-Based Model")
+        print("=" * 60)
+        print(f"🚀 GPU acceleration: {'Enabled' if self.gpu_available else 'Disabled'}")
+        print(f"📊 Training parameters:")
+        print(f"   • Epochs: {epochs}")
+        print(f"   • Data source: {self.data_source}")
+        print()
         
         try:
             model, results = train_image_model(
@@ -434,18 +490,25 @@ class ModelRetrainer:
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description='Retrain gesture recognition model')
+    parser = argparse.ArgumentParser(description='Retrain gesture recognition model with GPU acceleration')
     parser.add_argument('--data-source', choices=['expanded', 'raw', 'combined'], 
                        default='combined', help='Data source to use for training')
-    parser.add_argument('--epochs', type=int, default=100, 
-                       help='Number of training epochs')
+    parser.add_argument('--epochs', type=int, default=200, 
+                       help='Number of training epochs (increased for ResNet training)')
     parser.add_argument('--batch-size', type=int, default=32, 
                        help='Training batch size')
     
     args = parser.parse_args()
     
-    # Initialize retrainer
+    # Initialize retrainer (GPU will be configured automatically)
     retrainer = ModelRetrainer(data_source=args.data_source)
+    
+    print(f"\n🎯 Retraining Configuration:")
+    print(f"   • Data source: {args.data_source}")
+    print(f"   • Epochs: {args.epochs}")
+    print(f"   • Batch size: {args.batch_size}")
+    print(f"   • GPU acceleration: {'Enabled' if retrainer.gpu_available else 'Disabled'}")
+    print()
     
     # Run retraining
     success = retrainer.run_retraining(epochs=args.epochs, batch_size=args.batch_size)

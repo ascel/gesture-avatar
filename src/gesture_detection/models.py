@@ -5,15 +5,95 @@ Implements MediaPipe + custom CNN architecture for real-time gesture detection.
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, models, optimizers
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+try:
+    # TensorFlow 2.15+ uses standalone Keras
+    import keras
+    from keras import layers, models, optimizers
+    from keras.applications import MobileNetV2
+    from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, Callback
+except ImportError:
+    # Fallback for older TensorFlow versions
+    from tensorflow.keras import layers, models, optimizers
+    from tensorflow.keras.applications import MobileNetV2
+    from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, Callback
 import mediapipe as mp
 from typing import List, Dict, Tuple, Optional
 import cv2
 import json
 from pathlib import Path
 import joblib
+
+
+def configure_gpu():
+    """Configure GPU settings for optimal performance."""
+    try:
+        # Check if GPU is available
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            print(f"🚀 Found {len(gpus)} GPU(s): {[gpu.name for gpu in gpus]}")
+            
+            # Enable memory growth to avoid allocating all GPU memory at once
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            
+            # Set mixed precision for faster training
+            try:
+                keras.mixed_precision.set_global_policy('mixed_float16')
+            except:
+                # Fallback for older versions
+                tf.keras.mixed_precision.set_global_policy('mixed_float16')
+            
+            print("✅ GPU acceleration configured with memory growth and mixed precision")
+            return True
+        else:
+            print("⚠️  No GPU found, using CPU")
+            return False
+    except Exception as e:
+        print(f"⚠️  GPU configuration failed: {e}")
+        print("   Continuing with CPU")
+        return False
+
+
+def top_3_accuracy(y_true, y_pred):
+    """Custom metric for top-3 accuracy."""
+    try:
+        return keras.metrics.top_k_categorical_accuracy(y_true, y_pred, k=3)
+    except:
+        # Fallback for older versions
+        return tf.keras.metrics.top_k_categorical_accuracy(y_true, y_pred, k=3)
+
+
+class GestureTrainingCallback(Callback):
+    """Custom callback for gesture model training with advanced monitoring."""
+    
+    def __init__(self, patience=15, min_delta=0.001):
+        super().__init__()
+        self.patience = patience
+        self.min_delta = min_delta
+        self.best_val_accuracy = 0
+        self.wait = 0
+        self.stopped_epoch = 0
+        
+    def on_epoch_end(self, epoch, logs=None):
+        current_val_accuracy = logs.get('val_accuracy', 0)
+        
+        if current_val_accuracy > self.best_val_accuracy + self.min_delta:
+            self.best_val_accuracy = current_val_accuracy
+            self.wait = 0
+        else:
+            self.wait += 1
+            
+        if self.wait >= self.patience:
+            self.stopped_epoch = epoch
+            self.model.stop_training = True
+            print(f'\nEarly stopping triggered at epoch {epoch}')
+            
+        # Print detailed metrics
+        print(f"Epoch {epoch + 1}: "
+              f"loss={logs.get('loss', 0):.4f}, "
+              f"accuracy={logs.get('accuracy', 0):.4f}, "
+              f"val_loss={logs.get('val_loss', 0):.4f}, "
+              f"val_accuracy={logs.get('val_accuracy', 0):.4f}")
 
 
 class GestureRecognitionModel:
@@ -214,19 +294,82 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
         else:
             return "unknown", 0.5
     
-    def build_model(self, num_classes: int, input_dim: int = 13) -> tf.keras.Model:
-        """Build the neural network model."""
-        model = models.Sequential([
-            layers.Dense(128, activation='relu', input_shape=(input_dim,)),
-            layers.Dropout(0.3),
-            layers.Dense(64, activation='relu'),
-            layers.Dropout(0.3),
-            layers.Dense(32, activation='relu'),
-            layers.Dense(num_classes, activation='softmax')
-        ])
+    def build_model(self, num_classes: int, input_dim: int = 13):
+        """Build an optimized ResNet-inspired neural network model."""
+        
+        def residual_block(x, filters, kernel_size=3, stride=1, use_bias=True, name=None):
+            """Residual block with skip connections."""
+            shortcut = x
+            
+            # First convolution
+            x = layers.Dense(filters, use_bias=use_bias, name=f"{name}_conv1")(x)
+            x = layers.BatchNormalization(name=f"{name}_bn1")(x)
+            x = layers.ReLU(name=f"{name}_relu1")(x)
+            x = layers.Dropout(0.2)(x)
+            
+            # Second convolution
+            x = layers.Dense(filters, use_bias=use_bias, name=f"{name}_conv2")(x)
+            x = layers.BatchNormalization(name=f"{name}_bn2")(x)
+            
+            # Skip connection (if dimensions match)
+            if shortcut.shape[-1] == filters:
+                x = layers.Add(name=f"{name}_add")([shortcut, x])
+            else:
+                # Projection shortcut if dimensions don't match
+                shortcut = layers.Dense(filters, use_bias=use_bias, name=f"{name}_shortcut")(shortcut)
+                x = layers.Add(name=f"{name}_add")([shortcut, x])
+            
+            x = layers.ReLU(name=f"{name}_relu_out")(x)
+            return x
+        
+        # Input layer
+        inputs = layers.Input(shape=(input_dim,), name='input_features')
+        
+        # Initial feature extraction
+        x = layers.Dense(256, activation='relu', name='initial_dense')(inputs)
+        x = layers.BatchNormalization(name='initial_bn')(x)
+        x = layers.Dropout(0.3)(x)
+        
+        # Residual blocks
+        x = residual_block(x, 256, name='res_block_1')
+        x = residual_block(x, 256, name='res_block_2')
+        
+        x = residual_block(x, 128, name='res_block_3')
+        x = residual_block(x, 128, name='res_block_4')
+        
+        x = residual_block(x, 64, name='res_block_5')
+        x = residual_block(x, 64, name='res_block_6')
+        
+        # Global feature aggregation
+        x = layers.Dense(128, activation='relu', name='global_features')(x)
+        x = layers.BatchNormalization(name='global_bn')(x)
+        x = layers.Dropout(0.4)(x)
+        
+        # Attention mechanism
+        attention_weights = layers.Dense(128, activation='softmax', name='attention')(x)
+        x = layers.Multiply(name='attention_applied')([x, attention_weights])
+        
+        # Final classification layers
+        x = layers.Dense(64, activation='relu', name='final_dense')(x)
+        x = layers.Dropout(0.3)(x)
+        
+        # Output layer
+        outputs = layers.Dense(num_classes, activation='softmax', name='output')(x)
+        
+        # Create model
+        model = models.Model(inputs=inputs, outputs=outputs, name='ResNet_Gesture_Model')
+        
+        # Compile with advanced optimizer settings
+        optimizer = optimizers.AdamW(
+            learning_rate=0.001,
+            weight_decay=0.01,
+            beta_1=0.9,
+            beta_2=0.999,
+            epsilon=1e-7
+        )
         
         model.compile(
-            optimizer=optimizers.Adam(learning_rate=0.001),
+            optimizer=optimizer,
             loss='sparse_categorical_crossentropy',
             metrics=['accuracy']
         )
@@ -235,20 +378,63 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
     
     def train(self, X_train: np.ndarray, y_train: np.ndarray,
               X_val: np.ndarray, y_val: np.ndarray,
-              epochs: int = 100, batch_size: int = 32):
-        """Train the model."""
+              epochs: int = 200, batch_size: int = 32):
+        """Train the optimized ResNet-inspired model with GPU acceleration."""
+        # Configure GPU if available
+        gpu_available = configure_gpu()
+        
         num_classes = len(np.unique(y_train))
         input_dim = X_train.shape[1]
+        
+        print(f"🚀 Training ResNet-inspired gesture model")
+        print(f"   • Input features: {input_dim}")
+        print(f"   • Classes: {num_classes}")
+        print(f"   • Training samples: {len(X_train)}")
+        print(f"   • Validation samples: {len(X_val)}")
+        print(f"   • Batch size: {batch_size}")
+        print(f"   • Max epochs: {epochs}")
+        print(f"   • GPU acceleration: {'Enabled' if gpu_available else 'Disabled'}")
+        print()
         
         # Build model
         self.model = self.build_model(num_classes, input_dim)
         
-        # Callbacks
+        # Print model summary
+        print("📊 Model Architecture:")
+        self.model.summary()
+        print()
+        
+        # Advanced callbacks
         callbacks = [
-            EarlyStopping(patience=10, restore_best_weights=True),
-            ModelCheckpoint('best_gesture_model.h5', save_best_only=True),
-            ReduceLROnPlateau(factor=0.5, patience=5)
+            GestureTrainingCallback(patience=20, min_delta=0.001),
+            ModelCheckpoint(
+                'data/models/best_gesture_model.h5', 
+                save_best_only=True, 
+                monitor='val_accuracy',
+                mode='max'
+            ),
+            ReduceLROnPlateau(
+                factor=0.7, 
+                patience=10, 
+                min_lr=1e-7,
+                monitor='val_loss',
+                mode='min'
+            )
         ]
+        
+        # Train with class weights for imbalanced datasets
+        from sklearn.utils.class_weight import compute_class_weight
+        class_weights = compute_class_weight(
+            'balanced',
+            classes=np.unique(y_train),
+            y=y_train
+        )
+        class_weight_dict = dict(zip(np.unique(y_train), class_weights))
+        
+        print("⚖️  Class weights for balanced training:")
+        for class_idx, weight in class_weight_dict.items():
+            print(f"   • Class {class_idx}: {weight:.3f}")
+        print()
         
         # Train
         history = self.model.fit(
@@ -257,15 +443,25 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
             epochs=epochs,
             batch_size=batch_size,
             callbacks=callbacks,
-            verbose=1
+            class_weight=class_weight_dict,
+            verbose=1,
+            shuffle=True
         )
+        
+        print(f"\n✅ Training completed!")
+        print(f"   • Best validation accuracy: {max(history.history['val_accuracy']):.4f}")
+        print(f"   • Final training accuracy: {history.history['accuracy'][-1]:.4f}")
         
         return history
     
     def load_model(self, model_path: str):
         """Load pre-trained model and preprocessing artifacts."""
         # Load model
-        self.model = tf.keras.models.load_model(model_path)
+        try:
+            self.model = keras.models.load_model(model_path)
+        except:
+            # Fallback for older versions
+            self.model = tf.keras.models.load_model(model_path)
         
         # Load preprocessing artifacts
         model_dir = Path(model_path).parent
@@ -281,7 +477,11 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
     def save_model(self, model_path: str):
         """Save trained model and preprocessing artifacts."""
         # Save model
-        self.model.save(model_path)
+        try:
+            self.model.save(model_path)
+        except:
+            # Fallback for older versions
+            self.model.save(model_path)
         
         # Save preprocessing artifacts
         model_dir = Path(model_path).parent
@@ -341,38 +541,111 @@ class ImageBasedGestureModel(GestureRecognitionModel):
         
         return gesture_name, confidence
     
-    def build_model(self, num_classes: int) -> tf.keras.Model:
-        """Build MobileNet-based model."""
-        # Load pre-trained MobileNet
-        base_model = MobileNetV2(
-            weights='imagenet',
-            include_top=False,
-            input_shape=self.input_shape
+    def build_model(self, num_classes: int):
+        """Build an optimized ResNet-inspired image-based model."""
+        
+        def residual_block_2d(x, filters, kernel_size=3, stride=1, use_bias=True, name=None):
+            """2D Residual block with skip connections."""
+            shortcut = x
+            
+            # First convolution
+            x = layers.Conv2D(filters, kernel_size, strides=stride, padding='same', 
+                            use_bias=use_bias, name=f"{name}_conv1")(x)
+            x = layers.BatchNormalization(name=f"{name}_bn1")(x)
+            x = layers.ReLU(name=f"{name}_relu1")(x)
+            x = layers.Dropout(0.2)(x)
+            
+            # Second convolution
+            x = layers.Conv2D(filters, kernel_size, padding='same', 
+                            use_bias=use_bias, name=f"{name}_conv2")(x)
+            x = layers.BatchNormalization(name=f"{name}_bn2")(x)
+            
+            # Skip connection (if dimensions match)
+            if shortcut.shape[-1] == filters:
+                x = layers.Add(name=f"{name}_add")([shortcut, x])
+            else:
+                # Projection shortcut if dimensions don't match
+                shortcut = layers.Conv2D(filters, 1, strides=stride, padding='same', 
+                                       use_bias=use_bias, name=f"{name}_shortcut")(shortcut)
+                x = layers.Add(name=f"{name}_add")([shortcut, x])
+            
+            x = layers.ReLU(name=f"{name}_relu_out")(x)
+            return x
+        
+        # Input layer
+        inputs = layers.Input(shape=self.input_shape, name='input_image')
+        
+        # Initial feature extraction
+        x = layers.Conv2D(64, 7, strides=2, padding='same', name='initial_conv')(inputs)
+        x = layers.BatchNormalization(name='initial_bn')(x)
+        x = layers.ReLU(name='initial_relu')(x)
+        x = layers.MaxPooling2D(3, strides=2, padding='same', name='initial_pool')(x)
+        
+        # Residual blocks with different filter sizes
+        x = residual_block_2d(x, 64, name='res_block_1')
+        x = residual_block_2d(x, 64, name='res_block_2')
+        
+        x = residual_block_2d(x, 128, stride=2, name='res_block_3')
+        x = residual_block_2d(x, 128, name='res_block_4')
+        
+        x = residual_block_2d(x, 256, stride=2, name='res_block_5')
+        x = residual_block_2d(x, 256, name='res_block_6')
+        
+        # Global feature aggregation
+        x = layers.GlobalAveragePooling2D(name='global_pool')(x)
+        
+        # Feature refinement with attention
+        x = layers.Dense(512, activation='relu', name='feature_refinement')(x)
+        x = layers.BatchNormalization(name='refinement_bn')(x)
+        x = layers.Dropout(0.4)(x)
+        
+        # Multi-head attention mechanism
+        attention_heads = []
+        for i in range(4):  # 4 attention heads
+            attention_head = layers.Dense(128, activation='softmax', 
+                                        name=f'attention_head_{i}')(x)
+            attention_heads.append(attention_head)
+        
+        # Combine attention heads
+        attention_combined = layers.Concatenate(name='attention_combined')(attention_heads)
+        x = layers.Multiply(name='attention_applied')([x, attention_combined])
+        
+        # Final classification layers
+        x = layers.Dense(256, activation='relu', name='final_dense_1')(x)
+        x = layers.BatchNormalization(name='final_bn_1')(x)
+        x = layers.Dropout(0.3)(x)
+        
+        x = layers.Dense(128, activation='relu', name='final_dense_2')(x)
+        x = layers.Dropout(0.3)(x)
+        
+        # Output layer
+        outputs = layers.Dense(num_classes, activation='softmax', name='output')(x)
+        
+        # Create model
+        model = models.Model(inputs=inputs, outputs=outputs, name='ResNet_Image_Gesture_Model')
+        
+        # Compile with advanced optimizer settings
+        optimizer = optimizers.AdamW(
+            learning_rate=0.0001,  # Lower learning rate for image models
+            weight_decay=0.01,
+            beta_1=0.9,
+            beta_2=0.999,
+            epsilon=1e-7
         )
         
-        # Freeze base model
-        base_model.trainable = False
-        
-        # Add custom layers
-        model = models.Sequential([
-            base_model,
-            layers.GlobalAveragePooling2D(),
-            layers.Dropout(0.5),
-            layers.Dense(128, activation='relu'),
-            layers.Dropout(0.3),
-            layers.Dense(num_classes, activation='softmax')
-        ])
-        
         model.compile(
-            optimizer=optimizers.Adam(learning_rate=0.001),
+            optimizer=optimizer,
             loss='categorical_crossentropy',
             metrics=['accuracy']
         )
         
         return model
     
-    def train(self, train_generator, val_generator, epochs: int = 50):
-        """Train the model."""
+    def train(self, train_generator, val_generator, epochs: int = 100):
+        """Train the optimized ResNet-inspired image model with GPU acceleration."""
+        # Configure GPU if available
+        gpu_available = configure_gpu()
+        
         num_classes = len(train_generator.class_indices)
         self.class_indices = train_generator.class_indices
         
@@ -399,7 +672,11 @@ class ImageBasedGestureModel(GestureRecognitionModel):
     
     def load_model(self, model_path: str):
         """Load pre-trained model."""
-        self.model = tf.keras.models.load_model(model_path)
+        try:
+            self.model = keras.models.load_model(model_path)
+        except:
+            # Fallback for older versions
+            self.model = tf.keras.models.load_model(model_path)
         
         # Load class indices if available
         model_dir = Path(model_path).parent
