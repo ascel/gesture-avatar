@@ -1,21 +1,21 @@
 {
   "model_type": "efficientnet1d_feature_based",
   "architecture": "EfficientNet1D-inspired",
-  "training_date": "2025-07-23T21:07:43.939041",
+  "training_date": "2025-07-28T19:26:51.388519",
   "model_path": "data\\models\\efficientnet1d_gesture_model.h5",
   "training_history": {
     "final_accuracy": 1.0,
     "final_val_accuracy": 1.0,
-    "final_loss": 0.0008528557373210788,
-    "final_val_loss": 0.0015537331346422434,
-    "epochs_trained": 95,
+    "final_loss": 0.0013181180693209171,
+    "final_val_loss": 0.0027106855995953083,
+    "epochs_trained": 97,
     "best_val_accuracy": 1.0,
     "best_accuracy": 1.0
   },
   "test_results": {
-    "accuracy": 1.0,
-    "macro_avg_f1": 1.0,
-    "weighted_avg_f1": 1.0
+    "accuracy": 0.995,
+    "macro_avg_f1": 0.9949992186279106,
+    "weighted_avg_f1": 0.9949992186279107
   },
   "class_metrics": {
     "fist": {
@@ -31,15 +31,15 @@
       "support": 40.0
     },
     "peace": {
-      "precision": 1.0,
+      "precision": 0.975609756097561,
       "recall": 1.0,
-      "f1-score": 1.0,
+      "f1-score": 0.9876543209876543,
       "support": 40.0
     },
     "point": {
       "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
+      "recall": 0.975,
+      "f1-score": 0.9873417721518988,
       "support": 40.0
     },
     "thumbs_up": {

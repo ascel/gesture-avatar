@@ -1,27 +1,27 @@
 {
   "model_type": "resnet_feature_based",
   "architecture": "ResNet-inspired with attention",
-  "training_date": "2025-07-23T21:07:29.564615",
+  "training_date": "2025-07-28T19:26:37.118585",
   "model_path": "data\\models\\feature_gesture_model.h5",
   "training_history": {
-    "final_accuracy": 0.9763888716697693,
-    "final_val_accuracy": 1.0,
-    "final_loss": 0.1240985244512558,
-    "final_val_loss": 0.0050112782046198845,
-    "epochs_trained": 31,
+    "final_accuracy": 0.9541666507720947,
+    "final_val_accuracy": 0.9624999761581421,
+    "final_loss": 0.18239974975585938,
+    "final_val_loss": 0.10130593925714493,
+    "epochs_trained": 32,
     "best_val_accuracy": 1.0,
-    "best_accuracy": 0.9833333492279053
+    "best_accuracy": 0.9791666865348816
   },
   "test_results": {
-    "accuracy": 1.0,
-    "macro_avg_f1": 1.0,
-    "weighted_avg_f1": 1.0
+    "accuracy": 0.99,
+    "macro_avg_f1": 0.9899937460913071,
+    "weighted_avg_f1": 0.9899937460913071
   },
   "class_metrics": {
     "fist": {
-      "precision": 1.0,
+      "precision": 0.9523809523809523,
       "recall": 1.0,
-      "f1-score": 1.0,
+      "f1-score": 0.975609756097561,
       "support": 40.0
     },
     "open_hand": {
@@ -38,8 +38,8 @@
     },
     "point": {
       "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
+      "recall": 0.95,
+      "f1-score": 0.9743589743589743,
       "support": 40.0
     },
     "thumbs_up": {
