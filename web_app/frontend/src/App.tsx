@@ -71,6 +71,7 @@ function App() {
               <Route path="/models" element={<ModelManagement />} />
               <Route path="/live-demo" element={<LiveDemo />} />
               <Route path="/analytics" element={<EDA />} />
+              <Route path="/eda" element={<EDA />} />
             </Routes>
           </Box>
         </Box>
