@@ -1,0 +1,1 @@
+# Gesture detection package for gesture-controlled avatar project 

@@ -1,0 +1,14 @@
+{
+  "sprite_width": 200,
+  "sprite_height": 200,
+  "num_sprites": 7,
+  "gestures": [
+    "fist",
+    "idle",
+    "open_hand",
+    "peace",
+    "point",
+    "thumbs_up",
+    "wave"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "gesture_detection": {
+    "model_type": "feature",
+    "model_path": "data/models/sample_gesture_model.h5",
+    "confidence_threshold": 0.2,
+    "smoothing_window": 5
+  },
+  "avatar_animation": {
+    "avatar_type": "2d",
+    "animation_speed": 1.0,
+    "transition_smoothness": 0.3
+  },
+  "streaming": {
+    "fps": 30,
+    "resolution": [
+      640,
+      480
+    ],
+    "virtual_camera": false
+  }
+}

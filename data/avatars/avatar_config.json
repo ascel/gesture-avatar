@@ -1,0 +1,45 @@
+{
+  "available_avatars": {
+    "2d": {
+      "robot": {
+        "name": "Robot",
+        "description": "A friendly robot avatar",
+        "path": "data/avatars/2d/robot",
+        "type": "spritesheet"
+      },
+      "alien": {
+        "name": "Alien",
+        "description": "A cute alien avatar",
+        "path": "data/avatars/2d/alien",
+        "type": "spritesheet"
+      },
+      "ghost": {
+        "name": "Ghost",
+        "description": "A friendly ghost avatar",
+        "path": "data/avatars/2d/ghost",
+        "type": "spritesheet"
+      }
+    },
+    "3d": {
+      "anime_girl": {
+        "name": "Anime Girl",
+        "description": "A 3D anime-style avatar",
+        "path": "data/avatars/3d/anime_girl",
+        "type": "vrm"
+      },
+      "robot_3d": {
+        "name": "3D Robot",
+        "description": "A 3D robot avatar",
+        "path": "data/avatars/3d/robot_3d",
+        "type": "vrm"
+      }
+    }
+  },
+  "default_avatar": "robot",
+  "default_type": "2d",
+  "animation_settings": {
+    "transition_speed": 0.3,
+    "idle_animation": true,
+    "smooth_transitions": true
+  }
+}

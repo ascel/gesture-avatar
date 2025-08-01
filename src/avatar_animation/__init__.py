@@ -1,0 +1,1 @@
+# Avatar animation package for gesture-controlled avatar project 
