@@ -650,58 +650,42 @@ async def run_training_async(session_id: str, config: TrainingConfig):
             def __init__(self, session_id: str, total_epochs: int):
                 self.session_id = session_id
                 self.total_epochs = total_epochs
-                logger.info(f"🔧 RealTimeMetricsCallback created for session {session_id}")
+                logger.info(f"[Callback] Created for session {session_id}")
                 
             def on_epoch_end(self, epoch, logs=None):
                 try:
                     current_epoch = epoch + 1
-                    logger.info(f"🔔 Callback triggered for epoch {current_epoch}")
-                    logger.info(f"Session ID: {self.session_id}")
-                    logger.info(f"Logs available: {logs is not None}")
-                    
-                    # Use a simpler approach - directly update in the callback thread
-                    # The WebSocket loop will detect changes and send updates
+                    # Only log every 10 epochs or first/last
+                    if current_epoch == 1 or current_epoch == self.total_epochs or current_epoch % 10 == 0:
+                        logger.info(f"[Callback] Epoch {current_epoch}/{self.total_epochs}")
                     self._update_session_sync(current_epoch, logs)
-                    
                 except Exception as e:
-                    logger.error(f"❌ Error in callback: {e}")
+                    logger.error(f"[Callback] Error: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
-                    # Continue training even if callback fails
             
             def _update_session_sync(self, current_epoch, logs):
-                """Synchronous method to update session data directly."""
                 try:
                     if self.session_id in training_sessions and logs is not None:
                         session = training_sessions[self.session_id]
-                        
-                        # Update basic info
                         session["current_epoch"] = current_epoch
                         session["progress"] = (current_epoch / self.total_epochs) * 100
                         session["message"] = f"Training epoch {current_epoch}/{self.total_epochs}"
                         session["last_update"] = datetime.now().isoformat()
-                        
-                        # Use real metrics from training
                         train_loss = logs.get('loss', 0.0)
                         train_acc = logs.get('accuracy', 0.0)
                         val_loss = logs.get('val_loss', 0.0)
                         val_acc = logs.get('val_accuracy', 0.0)
-                        
-                        # Append metrics to history
                         session["metrics"]["train_loss"].append(float(train_loss))
                         session["metrics"]["train_accuracy"].append(float(train_acc))
                         session["metrics"]["val_loss"].append(float(val_loss))
                         session["metrics"]["val_accuracy"].append(float(val_acc))
-                        
-                        # Update current metrics for display
                         session["current_metrics"] = {
                             "train_loss": float(train_loss),
                             "train_accuracy": float(train_acc),
                             "val_loss": float(val_loss),
                             "val_accuracy": float(val_acc)
                         }
-                        
-                        # Add epoch summary
                         session["epoch_summary"] = {
                             "epoch": current_epoch,
                             "train_loss": float(train_loss),
@@ -710,31 +694,10 @@ async def run_training_async(session_id: str, config: TrainingConfig):
                             "val_accuracy": float(val_acc),
                             "timestamp": datetime.now().isoformat()
                         }
-                        
-                        logger.info(f"📊 Epoch {current_epoch}: train_loss={train_loss:.4f}, train_acc={train_acc:.4f}, val_loss={val_loss:.4f}, val_acc={val_acc:.4f}")
-                        logger.info(f"📈 Session updated: {session['message']}")
-                        logger.info(f"🔄 WebSocket will send update for epoch {current_epoch}")
-                        logger.info(f"🗂️ Session keys after update: {list(session.keys())}")
-                        
-                        # Force logging of the exact session state that WebSocket should see
-                        logger.info(f"🔍 CALLBACK - Session state after update:")
-                        logger.info(f"   - status: {session.get('status')}")
-                        logger.info(f"   - current_epoch: {session.get('current_epoch')}")
-                        logger.info(f"   - progress: {session.get('progress')}")
-                        logger.info(f"   - message: {session.get('message')}")
-                        logger.info(f"   - last_update: {session.get('last_update')}")
-                        logger.info(f"   - metrics length: {len(session.get('metrics', {}).get('train_loss', []))}")
-                        
                     else:
-                        logger.warning(f"⚠️  Session {self.session_id} not found or logs is None")
-                        logger.warning(f"⚠️  Available sessions: {list(training_sessions.keys())}")
-                        if logs is not None:
-                            logger.info(f"📋 Available logs: {list(logs.keys())}")
-                        else:
-                            logger.warning("📋 Logs is None!")
-                            
+                        logger.warning(f"[Callback] Session {self.session_id} not found or logs is None")
                 except Exception as e:
-                    logger.error(f"❌ Error in sync session update: {e}")
+                    logger.error(f"[Callback] Error in sync session update: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
         
@@ -976,20 +939,14 @@ async def get_dataset_info():
 
 @app.websocket("/ws/training/{session_id}")
 async def websocket_training_updates(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time training updates."""
-    logger.info(f"🔌 WebSocket connection attempt for session: {session_id}")
     await websocket.accept()
-    logger.info(f"✅ WebSocket connection accepted for session: {session_id}")
-    
+    logger.info(f"[WebSocket] Accepted for session: {session_id}")
     try:
         last_update = None
         update_count = 0
-        
         while True:
             if session_id in training_sessions:
                 current_data = training_sessions[session_id]
-                
-                # Better change detection using JSON serialization or specific fields
                 current_signature = {
                     'status': current_data.get('status'),
                     'current_epoch': current_data.get('current_epoch'),
@@ -997,55 +954,28 @@ async def websocket_training_updates(websocket: WebSocket, session_id: str):
                     'message': current_data.get('message'),
                     'last_update': current_data.get('last_update')
                 }
-                
-                # Debug: Log current state
-                if update_count == 0 or update_count % 10 == 0:  # Log every 10th check
-                    logger.info(f"🔍 WebSocket checking session {session_id}: status={current_signature['status']}, epoch={current_signature['current_epoch']}")
-                    logger.info(f"🔍 WebSocket session data: {current_signature}")
-                
-                # Only send if data has changed or it's the first update
                 if last_update != current_signature:
                     update_count += 1
-                    logger.info(f"📡 Sending WebSocket update #{update_count} for session {session_id}: status={current_data.get('status')}, epoch={current_data.get('current_epoch', 0)}")
-                    logger.info(f"🔄 Change detected - Old: {last_update}")
-                    logger.info(f"🔄 Change detected - New: {current_signature}")
-                    
-                    # Log the full data being sent
-                    logger.info(f"📤 Full data being sent to WebSocket:")
-                    logger.info(f"   - status: {current_data.get('status')}")
-                    logger.info(f"   - current_epoch: {current_data.get('current_epoch')}")
-                    logger.info(f"   - progress: {current_data.get('progress')}")
-                    logger.info(f"   - message: {current_data.get('message')}")
-                    
+                    # Only log every 10th update or first/last
+                    if update_count == 1 or current_signature['status'] in ['completed', 'failed'] or update_count % 10 == 0:
+                        logger.info(f"[WebSocket] Update #{update_count} for session {session_id}: status={current_data.get('status')}, epoch={current_data.get('current_epoch', 0)}")
                     await websocket.send_json(current_data)
                     last_update = current_signature.copy()
-                    
-                    # If training is completed or failed, break the loop
                     if current_data.get("status") in ["completed", "failed"]:
-                        logger.info(f"🏁 Training finished for session {session_id}, closing WebSocket")
+                        logger.info(f"[WebSocket] Training finished for session {session_id}, closing WebSocket")
                         break
-                else:
-                    # Log when no change is detected (but only occasionally to avoid spam)
-                    if update_count % 50 == 0 and update_count > 0:
-                        logger.info(f"🔍 No change detected in WebSocket data (check #{update_count})")
-                        logger.info(f"   Current: {current_signature}")
-                        logger.info(f"   Last: {last_update}")
-            
             else:
-                logger.warning(f"⚠️ Session {session_id} not found in training_sessions")
+                logger.warning(f"[WebSocket] Session {session_id} not found in training_sessions")
                 await websocket.send_json({"error": "Session not found"})
                 break
-            
-            # More frequent updates during training
             if session_id in training_sessions and training_sessions[session_id].get("status") == "running":
-                await asyncio.sleep(0.1)  # Update every 100ms during training
+                await asyncio.sleep(0.1)
             else:
-                await asyncio.sleep(0.5)  # Update every 500ms otherwise
-            
+                await asyncio.sleep(0.5)
     except WebSocketDisconnect:
-        logger.info(f"🔌 WebSocket disconnected for session {session_id}")
+        logger.info(f"[WebSocket] Disconnected for session {session_id}")
     except Exception as e:
-        logger.error(f"❌ WebSocket error for session {session_id}: {e}")
+        logger.error(f"[WebSocket] Error for session {session_id}: {e}")
         try:
             await websocket.send_json({"error": f"WebSocket error: {str(e)}"})
         except:
