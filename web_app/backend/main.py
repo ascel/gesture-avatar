@@ -6,6 +6,8 @@ Provides API endpoints for data collection, preprocessing, training, and inferen
 import os
 import json
 import asyncio
+import logging
+import keras
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -19,6 +21,10 @@ import numpy as np
 import cv2
 import base64
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Import existing project modules
 import sys
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -30,6 +36,30 @@ from src.utils.data_preprocessing import GestureDataPreprocessor
 # Import training functions instead of ModelTrainer class
 from src.gesture_detection.train_models import train_feature_model, train_efficientnet1d_model
 import mediapipe as mp
+
+def train_single_model(model_backbone: str, data_dir: str, epochs: int, batch_size: int, callback=None):
+    """Train a single model based on the selected backbone."""
+    logger.info(f"Training single {model_backbone} model...")
+    logger.info(f"Callback provided: {callback is not None}")
+    
+    if model_backbone == "resnet":
+        logger.info("Calling train_feature_model for ResNet...")
+        return train_feature_model(
+            data_dir=data_dir,
+            epochs=epochs,
+            batch_size=batch_size,
+            callback=callback
+        )
+    elif model_backbone == "efficientnet":
+        logger.info("Calling train_efficientnet1d_model for EfficientNet...")
+        return train_efficientnet1d_model(
+            data_dir=data_dir,
+            epochs=epochs,
+            batch_size=batch_size,
+            callback=callback
+        )
+    else:
+        raise ValueError(f"Unsupported backbone: {model_backbone}")
 
 # Simple wrapper class for training
 class ModelTrainer:
@@ -43,40 +73,48 @@ class ModelTrainer:
               validation_split: float = 0.2, callback=None):
         """Train model using existing training functions."""
         try:
-            if self.model_backbone == "resnet":
-                # Use feature-based training
-                model, results = train_feature_model(
-                    data_dir=self.data_dir,
-                    epochs=epochs,
-                    batch_size=batch_size
-                )
-            elif self.model_backbone == "efficientnet":
-                # Use EfficientNet1D training
-                model, results = train_efficientnet1d_model(
-                    data_dir=self.data_dir,
-                    epochs=epochs,
-                    batch_size=batch_size
-                )
-            else:
-                raise ValueError(f"Unsupported backbone: {self.model_backbone}")
+            logger.info(f"Training {self.model_backbone} model with {epochs} epochs...")
+            logger.info(f"Callback provided to ModelTrainer.train: {callback is not None}")
             
-            if results:
+            # Use the dedicated single model training function
+            model, results = train_single_model(
+                model_backbone=self.model_backbone,
+                data_dir=self.data_dir,
+                epochs=epochs,
+                batch_size=batch_size,
+                callback=callback  # Pass the callback
+            )
+            
+            # Determine the expected model path
+            if self.model_backbone == "resnet":
+                model_path = "data/models/feature_gesture_model.h5"
+            elif self.model_backbone == "efficientnet":
+                model_path = "data/models/efficientnet1d_gesture_model.h5"
+            else:
+                model_path = f"data/models/{self.model_backbone}_gesture_model.h5"
+            
+            if results and model:
                 return {
-                    "final_accuracy": results.get("test_results", {}).get("accuracy", 0.92),
-                    "model_path": f"data/models/{self.model_backbone}_gesture_model.h5"
+                    "final_accuracy": results.get("test_results", {}).get("accuracy", 
+                                                results.get("training_history", {}).get("final_accuracy", 0.85)),
+                    "model_path": results.get("model_path", model_path),
+                    "training_history": results.get("training_history", {}),
+                    "test_results": results.get("test_results", {})
                 }
             else:
                 return {
                     "final_accuracy": 0.85,
-                    "model_path": f"data/models/{self.model_backbone}_gesture_model.h5"
+                    "model_path": model_path,
+                    "error": "Training completed but no results returned"
                 }
                 
         except Exception as e:
             print(f"Training error: {e}")
-            # Return simulated results for demo
+            # Return error results
             return {
-                "final_accuracy": 0.85,
-                "model_path": f"data/models/{self.model_backbone}_gesture_model.h5"
+                "final_accuracy": 0.0,
+                "model_path": f"data/models/{self.model_backbone}_gesture_model.h5",
+                "error": str(e)
             }
 
 app = FastAPI(title="Gesture Avatar Web App", version="1.0.0")
@@ -448,11 +486,20 @@ async def run_preprocessing():
             
             total_processed = len(X_train) + len(X_val) + len(X_test)
             
-            return {
+            # Save preprocessing results
+            results = {
                 "status": "completed",
                 "processed_samples": total_processed,
-                "config": config
+                "config": config,
+                "timestamp": datetime.now().isoformat()
             }
+            
+            # Save to file for persistence
+            results_file = Path("data/preprocessing_results.json")
+            with open(results_file, 'w') as f:
+                json.dump(results, f, indent=2)
+            
+            return results
         except Exception as e:
             return {
                 "status": "completed",
@@ -462,6 +509,25 @@ async def run_preprocessing():
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error running preprocessing: {str(e)}")
+
+@app.get("/api/preprocessing/results")
+async def get_preprocessing_results():
+    """Get the last preprocessing results."""
+    try:
+        results_file = Path("data/preprocessing_results.json")
+        if results_file.exists():
+            with open(results_file, 'r') as f:
+                results = json.load(f)
+            return results
+        else:
+            return {
+                "status": "no_results",
+                "processed_samples": 0,
+                "config": {},
+                "timestamp": None
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading preprocessing results: {str(e)}")
 
 # ================== MODEL MANAGEMENT ENDPOINTS ==================
 
@@ -526,10 +592,12 @@ async def start_training(config: TrainingConfig):
     """Start model training with the given configuration."""
     try:
         session_id = f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        logger.info(f"🚀 Starting training session: {session_id}")
         
         # Initialize training session
         training_sessions[session_id] = {
             "status": "starting",
+            "message": "Preparing training session...",
             "config": config.dict(),
             "start_time": datetime.now().isoformat(),
             "progress": 0,
@@ -539,62 +607,164 @@ async def start_training(config: TrainingConfig):
                 "train_accuracy": [],
                 "val_loss": [],
                 "val_accuracy": []
+            },
+            "current_metrics": {
+                "train_loss": 0.0,
+                "train_accuracy": 0.0,
+                "val_loss": 0.0,
+                "val_accuracy": 0.0
             }
         }
         
+        logger.info(f"📋 Training session {session_id} initialized with status: starting")
+        
         # Start training in background
         asyncio.create_task(run_training_async(session_id, config))
+        logger.info(f"🔄 Background training task created for session: {session_id}")
         
-        return {
-            "session_id": session_id,
-            "status": "started",
-            "config": config.dict()
-        }
+        return {"session_id": session_id, "status": "started"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error starting training: {str(e)}")
 
 async def run_training_async(session_id: str, config: TrainingConfig):
     """Run training asynchronously."""
+    logger.info(f"🏃 run_training_async started for session: {session_id}")
     try:
+        logger.info(f"📊 Updating session {session_id} status to 'running'")
         training_sessions[session_id]["status"] = "running"
+        training_sessions[session_id]["message"] = "Initializing training..."
         
+        logger.info(f"🔧 Initializing trainer for session: {session_id}")
         # Initialize trainer
         trainer = ModelTrainer(
             model_backbone=config.model_backbone,
             data_dir="data/processed"
         )
         
-        # Simulate training progress with realistic metrics
-        for epoch in range(config.epochs):
-            if session_id in training_sessions:
-                session = training_sessions[session_id]
-                session["current_epoch"] = epoch + 1
-                session["progress"] = ((epoch + 1) / config.epochs) * 100
+        # Create a simple callback class that will be wrapped by Keras callback in training functions
+        class RealTimeMetricsCallback:
+            def __init__(self, session_id: str, total_epochs: int):
+                self.session_id = session_id
+                self.total_epochs = total_epochs
+                logger.info(f"🔧 RealTimeMetricsCallback created for session {session_id}")
                 
-                # Simulate realistic training metrics
-                train_loss = 1.0 - (epoch * 0.015) + np.random.normal(0, 0.05)
-                train_acc = 0.3 + (epoch * 0.012) + np.random.normal(0, 0.02)
-                val_loss = train_loss + 0.1 + np.random.normal(0, 0.03)
-                val_acc = train_acc - 0.05 + np.random.normal(0, 0.02)
-                
-                session["metrics"]["train_loss"].append(max(0.1, train_loss))
-                session["metrics"]["train_accuracy"].append(min(0.95, max(0.0, train_acc)))
-                session["metrics"]["val_loss"].append(max(0.1, val_loss))
-                session["metrics"]["val_accuracy"].append(min(0.95, max(0.0, val_acc)))
-                
-                await asyncio.sleep(0.5)  # Simulate training time
+            def on_epoch_end(self, epoch, logs=None):
+                try:
+                    current_epoch = epoch + 1
+                    logger.info(f"🔔 Callback triggered for epoch {current_epoch}")
+                    logger.info(f"Session ID: {self.session_id}")
+                    logger.info(f"Logs available: {logs is not None}")
+                    
+                    if self.session_id in training_sessions and logs is not None:
+                        session = training_sessions[self.session_id]
+                        
+                        # Update basic info
+                        session["current_epoch"] = current_epoch
+                        session["progress"] = (current_epoch / self.total_epochs) * 100
+                        session["message"] = f"Training epoch {current_epoch}/{self.total_epochs}"
+                        session["last_update"] = datetime.now().isoformat()
+                        
+                        # Use real metrics from training
+                        train_loss = logs.get('loss', 0.0)
+                        train_acc = logs.get('accuracy', 0.0)
+                        val_loss = logs.get('val_loss', 0.0)
+                        val_acc = logs.get('val_accuracy', 0.0)
+                        
+                        # Append metrics to history
+                        session["metrics"]["train_loss"].append(float(train_loss))
+                        session["metrics"]["train_accuracy"].append(float(train_acc))
+                        session["metrics"]["val_loss"].append(float(val_loss))
+                        session["metrics"]["val_accuracy"].append(float(val_acc))
+                        
+                        # Update current metrics for display
+                        session["current_metrics"] = {
+                            "train_loss": float(train_loss),
+                            "train_accuracy": float(train_acc),
+                            "val_loss": float(val_loss),
+                            "val_accuracy": float(val_acc)
+                        }
+                        
+                        # Add epoch summary
+                        session["epoch_summary"] = {
+                            "epoch": current_epoch,
+                            "train_loss": float(train_loss),
+                            "train_accuracy": float(train_acc),
+                            "val_loss": float(val_loss),
+                            "val_accuracy": float(val_acc),
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        
+                        logger.info(f"📊 Epoch {current_epoch}: train_loss={train_loss:.4f}, train_acc={train_acc:.4f}, val_loss={val_loss:.4f}, val_acc={val_acc:.4f}")
+                        logger.info(f"📈 Session updated: {session['message']}")
+                        logger.info(f"🔄 WebSocket will send update for epoch {current_epoch}")
+                        logger.info(f"🗂️ Session keys after update: {list(session.keys())}")
+                        
+                        # Force logging of the exact session state that WebSocket should see
+                        logger.info(f"🔍 CALLBACK - Session state after update:")
+                        logger.info(f"   - status: {session.get('status')}")
+                        logger.info(f"   - current_epoch: {session.get('current_epoch')}")
+                        logger.info(f"   - progress: {session.get('progress')}")
+                        logger.info(f"   - message: {session.get('message')}")
+                        logger.info(f"   - last_update: {session.get('last_update')}")
+                        logger.info(f"   - metrics length: {len(session.get('metrics', {}).get('train_loss', []))}")
+                        
+                    else:
+                        logger.warning(f"⚠️  Session {self.session_id} not found or logs is None")
+                        logger.warning(f"⚠️  Available sessions: {list(training_sessions.keys())}")
+                        if logs is not None:
+                            logger.info(f"📋 Available logs: {list(logs.keys())}")
+                        else:
+                            logger.warning("📋 Logs is None!")
+                            
+                except Exception as e:
+                    logger.error(f"❌ Error in callback: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    # Continue training even if callback fails
         
-        # Run actual training (this might take a while)
-        result = trainer.train(
-            epochs=config.epochs,
-            batch_size=config.batch_size,
-            learning_rate=config.learning_rate,
-            validation_split=config.validation_split
-        )
+        # Note: The callback will be converted to a proper Keras callback in the training functions
+        # This is handled in the train_feature_model and train_efficientnet1d_model functions
         
-        # Update session with results
+        # Run actual training with real-time metrics
+        logger.info(f"Starting training with config: {config.dict()}")
+        training_sessions[session_id]["message"] = "Starting model training..."
+        
+        # Create callback instance
+        callback = RealTimeMetricsCallback(session_id, config.epochs)
+        logger.info(f"Created callback for session {session_id} with {config.epochs} epochs")
+        
+        # Run training with real-time updates
+        logger.info("Starting trainer.train() with callback...")
+        
+        # Run training in a separate thread to avoid blocking the event loop
+        import concurrent.futures
+        
+        def run_training_sync():
+            """Run the synchronous training in a separate thread."""
+            logger.info("🧵 Training started in separate thread")
+            result = trainer.train(
+                epochs=config.epochs,
+                batch_size=config.batch_size,
+                learning_rate=config.learning_rate,
+                validation_split=config.validation_split,
+                callback=callback  # Pass the callback for real-time updates
+            )
+            logger.info("🧵 Training completed in separate thread")
+            return result
+        
+        # Execute training in thread pool to avoid blocking
+        logger.info("🚀 Submitting training to thread pool...")
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(run_training_sync)
+            logger.info("⏳ Waiting for training to complete (non-blocking)...")
+            result = await asyncio.wrap_future(future)
+        
+        logger.info(f"Training completed with result: {result}")
+        
+        # Update session with final results
         training_sessions[session_id].update({
             "status": "completed",
+            "message": "Training completed successfully!",
             "end_time": datetime.now().isoformat(),
             "final_accuracy": result.get("final_accuracy", 0.85),
             "model_path": result.get("model_path", ""),
@@ -602,8 +772,10 @@ async def run_training_async(session_id: str, config: TrainingConfig):
         })
         
     except Exception as e:
+        print(f"Training failed with error: {e}")
         training_sessions[session_id].update({
             "status": "failed",
+            "message": f"Training failed: {str(e)}",
             "error": str(e),
             "end_time": datetime.now().isoformat()
         })
@@ -614,7 +786,82 @@ async def get_training_status(session_id: str):
     if session_id not in training_sessions:
         raise HTTPException(status_code=404, detail="Training session not found")
     
-    return training_sessions[session_id]
+    session_data = training_sessions[session_id]
+    
+    # Add debug information
+    session_data["debug"] = {
+        "session_id": session_id,
+        "total_sessions": len(training_sessions),
+        "session_keys": list(training_sessions.keys()),
+        "last_update": session_data.get("last_update", "never"),
+        "metrics_count": {
+            "train_loss": len(session_data.get("metrics", {}).get("train_loss", [])),
+            "train_accuracy": len(session_data.get("metrics", {}).get("train_accuracy", [])),
+            "val_loss": len(session_data.get("metrics", {}).get("val_loss", [])),
+            "val_accuracy": len(session_data.get("metrics", {}).get("val_accuracy", []))
+        }
+    }
+    
+    return session_data
+
+@app.post("/api/training/test-callback/{session_id}")
+async def test_callback_update(session_id: str):
+    """Test endpoint to manually trigger a callback update for debugging."""
+    try:
+        if session_id not in training_sessions:
+            # Create a test session if it doesn't exist
+            training_sessions[session_id] = {
+                "status": "running",
+                "message": "Test training session",
+                "config": {"epochs": 5},
+                "start_time": datetime.now().isoformat(),
+                "progress": 0,
+                "current_epoch": 0,
+                "metrics": {
+                    "train_loss": [],
+                    "train_accuracy": [],
+                    "val_loss": [],
+                    "val_accuracy": []
+                },
+                "current_metrics": {
+                    "train_loss": 0.0,
+                    "train_accuracy": 0.0,
+                    "val_loss": 0.0,
+                    "val_accuracy": 0.0
+                }
+            }
+            logger.info(f"🧪 Created test session: {session_id}")
+        
+        # Simulate a callback update
+        session = training_sessions[session_id]
+        current_epoch = session.get("current_epoch", 0) + 1
+        
+        session["current_epoch"] = current_epoch
+        session["progress"] = (current_epoch / 5) * 100
+        session["message"] = f"Test epoch {current_epoch}/5"
+        session["last_update"] = datetime.now().isoformat()
+        
+        # Add test metrics
+        session["metrics"]["train_loss"].append(0.5 - (current_epoch * 0.1))
+        session["metrics"]["train_accuracy"].append(0.6 + (current_epoch * 0.1))
+        session["metrics"]["val_loss"].append(0.6 - (current_epoch * 0.08))
+        session["metrics"]["val_accuracy"].append(0.5 + (current_epoch * 0.12))
+        
+        session["current_metrics"] = {
+            "train_loss": 0.5 - (current_epoch * 0.1),
+            "train_accuracy": 0.6 + (current_epoch * 0.1),
+            "val_loss": 0.6 - (current_epoch * 0.08),
+            "val_accuracy": 0.5 + (current_epoch * 0.12)
+        }
+        
+        logger.info(f"🧪 Test callback update for session {session_id}: epoch {current_epoch}")
+        logger.info(f"🧪 Session state: {session}")
+        
+        return {"message": f"Test callback triggered for session {session_id}", "epoch": current_epoch}
+        
+    except Exception as e:
+        logger.error(f"❌ Error in test callback: {e}")
+        raise HTTPException(status_code=500, detail=f"Error in test callback: {str(e)}")
 
 # ================== INFERENCE ENDPOINTS ==================
 
@@ -714,19 +961,79 @@ async def get_dataset_info():
 @app.websocket("/ws/training/{session_id}")
 async def websocket_training_updates(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for real-time training updates."""
+    logger.info(f"🔌 WebSocket connection attempt for session: {session_id}")
     await websocket.accept()
+    logger.info(f"✅ WebSocket connection accepted for session: {session_id}")
     
     try:
+        last_update = None
+        update_count = 0
+        
         while True:
             if session_id in training_sessions:
-                await websocket.send_json(training_sessions[session_id])
-            else:
-                await websocket.send_json({"error": "Session not found"})
+                current_data = training_sessions[session_id]
+                
+                # Better change detection using JSON serialization or specific fields
+                current_signature = {
+                    'status': current_data.get('status'),
+                    'current_epoch': current_data.get('current_epoch'),
+                    'progress': current_data.get('progress'),
+                    'message': current_data.get('message'),
+                    'last_update': current_data.get('last_update')
+                }
+                
+                # Debug: Log current state
+                if update_count == 0 or update_count % 10 == 0:  # Log every 10th check
+                    logger.info(f"🔍 WebSocket checking session {session_id}: status={current_signature['status']}, epoch={current_signature['current_epoch']}")
+                    logger.info(f"🔍 WebSocket session data: {current_signature}")
+                
+                # Only send if data has changed or it's the first update
+                if last_update != current_signature:
+                    update_count += 1
+                    logger.info(f"📡 Sending WebSocket update #{update_count} for session {session_id}: status={current_data.get('status')}, epoch={current_data.get('current_epoch', 0)}")
+                    logger.info(f"🔄 Change detected - Old: {last_update}")
+                    logger.info(f"🔄 Change detected - New: {current_signature}")
+                    
+                    # Log the full data being sent
+                    logger.info(f"📤 Full data being sent to WebSocket:")
+                    logger.info(f"   - status: {current_data.get('status')}")
+                    logger.info(f"   - current_epoch: {current_data.get('current_epoch')}")
+                    logger.info(f"   - progress: {current_data.get('progress')}")
+                    logger.info(f"   - message: {current_data.get('message')}")
+                    
+                    await websocket.send_json(current_data)
+                    last_update = current_signature.copy()
+                    
+                    # If training is completed or failed, break the loop
+                    if current_data.get("status") in ["completed", "failed"]:
+                        logger.info(f"🏁 Training finished for session {session_id}, closing WebSocket")
+                        break
+                else:
+                    # Log when no change is detected (but only occasionally to avoid spam)
+                    if update_count % 50 == 0 and update_count > 0:
+                        logger.info(f"🔍 No change detected in WebSocket data (check #{update_count})")
+                        logger.info(f"   Current: {current_signature}")
+                        logger.info(f"   Last: {last_update}")
             
-            await asyncio.sleep(1)  # Update every second
+            else:
+                logger.warning(f"⚠️ Session {session_id} not found in training_sessions")
+                await websocket.send_json({"error": "Session not found"})
+                break
+            
+            # More frequent updates during training
+            if session_id in training_sessions and training_sessions[session_id].get("status") == "running":
+                await asyncio.sleep(0.1)  # Update every 100ms during training
+            else:
+                await asyncio.sleep(0.5)  # Update every 500ms otherwise
             
     except WebSocketDisconnect:
-        pass
+        logger.info(f"🔌 WebSocket disconnected for session {session_id}")
+    except Exception as e:
+        logger.error(f"❌ WebSocket error for session {session_id}: {e}")
+        try:
+            await websocket.send_json({"error": f"WebSocket error: {str(e)}"})
+        except:
+            pass
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

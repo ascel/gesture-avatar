@@ -37,6 +37,24 @@ const Preprocessing: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [processedSamples, setProcessedSamples] = useState<number>(0);
+  const [lastResults, setLastResults] = useState<any>(null);
+
+  // Load last preprocessing results on component mount
+  React.useEffect(() => {
+    loadLastResults();
+  }, []);
+
+  const loadLastResults = async () => {
+    try {
+      const response = await axios.get('/api/preprocessing/results');
+      if (response.data.status === 'completed') {
+        setProcessedSamples(response.data.processed_samples);
+        setLastResults(response.data);
+      }
+    } catch (error) {
+      console.log('No previous preprocessing results found');
+    }
+  };
 
   const handleConfigChange = (field: keyof PreprocessingConfig, value: any) => {
     setConfig(prev => ({
@@ -227,24 +245,30 @@ const Preprocessing: React.FC = () => {
                     Samples processed successfully
                   </Typography>
                   
+                  {lastResults?.timestamp && (
+                    <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                      Last run: {new Date(lastResults.timestamp).toLocaleString()}
+                    </Typography>
+                  )}
+                  
                   <Box sx={{ mt: 3 }}>
                     <Typography variant="subtitle2" gutterBottom>
                       Applied Configuration:
                     </Typography>
                     <Box sx={{ pl: 2 }}>
                       <Typography variant="body2">
-                        • Normalization: {config.normalize ? 'Enabled' : 'Disabled'}
+                        • Normalization: {lastResults?.config?.normalize ? 'Enabled' : 'Disabled'}
                       </Typography>
                       <Typography variant="body2">
-                        • Augmentation: {config.augmentation ? 'Enabled' : 'Disabled'}
+                        • Augmentation: {lastResults?.config?.augmentation ? 'Enabled' : 'Disabled'}
                       </Typography>
-                      {config.augmentation && (
+                      {lastResults?.config?.augmentation && (
                         <>
                           <Typography variant="body2">
-                            • Noise Level: {config.noise_level}
+                            • Noise Level: {lastResults.config.noise_level}
                           </Typography>
                           <Typography variant="body2">
-                            • Rotation Range: {config.rotation_range}°
+                            • Rotation Range: {lastResults.config.rotation_range}°
                           </Typography>
                         </>
                       )}

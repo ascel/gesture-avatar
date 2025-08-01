@@ -1,6 +1,6 @@
 {
   "normalize": true,
   "augmentation": true,
-  "noise_level": 0.1,
-  "rotation_range": 15
+  "noise_level": 0.0,
+  "rotation_range": 30
 }

@@ -53,6 +53,12 @@ interface TrainingSession {
     val_loss: number[];
     val_accuracy: number[];
   };
+  current_metrics?: {
+    train_loss: number;
+    train_accuracy: number;
+    val_loss: number;
+    val_accuracy: number;
+  };
   final_accuracy?: number;
   model_path?: string;
   error?: string;
@@ -71,48 +77,238 @@ const Training: React.FC = () => {
   const [sessionData, setSessionData] = useState<TrainingSession | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [isTraining, setIsTraining] = useState(false);
+  const [activeWebSocket, setActiveWebSocket] = useState<WebSocket | null>(null);
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
+  // Function to establish WebSocket connection immediately
+  const connectWebSocket = (sessionId: string) => {
+    // Close existing connection if any
+    if (activeWebSocket) {
+      console.log('🔌 Closing existing WebSocket connection');
+      activeWebSocket.close();
+      setActiveWebSocket(null);
+    }
     
-    if (currentSession && isTraining) {
-      interval = setInterval(async () => {
+    console.log(`🚀 Immediately connecting WebSocket for session: ${sessionId}`);
+    
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname;
+      const port = process.env.NODE_ENV === 'development' ? '8000' : window.location.port;
+      const wsUrl = `${protocol}//${host}:${port}/ws/training/${sessionId}`;
+      
+      console.log(`🔗 Immediate WebSocket connection to: ${wsUrl}`);
+      console.log('🔍 Connection details:');
+      console.log('  - Protocol:', protocol);
+      console.log('  - Host:', host);
+      console.log('  - Port:', port);
+      console.log('  - Session ID:', sessionId);
+      console.log('  - NODE_ENV:', process.env.NODE_ENV);
+      console.log('  - Current location:', window.location.href);
+      
+      const websocket = new WebSocket(wsUrl);
+      
+      websocket.onopen = () => {
+        console.log('✅ Immediate WebSocket connected successfully!');
+        console.log('🔍 WebSocket readyState:', websocket?.readyState);
+        console.log('🔍 WebSocket URL:', websocket?.url);
+        setActiveWebSocket(websocket);
+        setMessage({ type: 'success', text: 'Real-time training updates connected!' });
+        
+        // Test if WebSocket can receive data by checking session status immediately
+        console.log('🧪 Testing WebSocket - should receive initial session data within 1-2 seconds...');
+        setTimeout(() => {
+          if (websocket?.readyState === WebSocket.OPEN) {
+            console.log('🔍 WebSocket still open after 2 seconds, checking if we received any data...');
+          }
+        }, 2000);
+      };
+      
+      websocket.onmessage = (event) => {
+        console.log('📨 Raw WebSocket message received:', event);
+        console.log('📨 Message data type:', typeof event.data);
+        console.log('📨 Message data:', event.data);
+        
         try {
-          const response = await axios.get(`/api/training/status/${currentSession}`);
-          setSessionData(response.data);
+          const data = JSON.parse(event.data);
+          console.log('📡 Parsed WebSocket update received:', data);
           
-          if (response.data.status === 'completed' || response.data.status === 'failed') {
-            setIsTraining(false);
-            if (response.data.status === 'completed') {
-              setMessage({ 
-                type: 'success', 
-                text: `Training completed! Final accuracy: ${(response.data.final_accuracy * 100).toFixed(2)}%` 
-              });
-            } else {
-              setMessage({ 
-                type: 'error', 
-                text: `Training failed: ${response.data.error}` 
-              });
+          // Enhanced logging for training progress
+          if (data.status === 'running' && data.current_epoch) {
+            console.log(`🔄 Training Progress: Epoch ${data.current_epoch}/${data.config?.epochs || '?'} (${data.progress?.toFixed(1) || 0}%)`);
+            if (data.current_metrics) {
+              const metrics = data.current_metrics;
+              console.log(`📊 Current Metrics: Loss=${metrics.train_loss?.toFixed(4) || 'N/A'}, Acc=${(metrics.train_accuracy * 100)?.toFixed(2) || 'N/A'}%, Val_Loss=${metrics.val_loss?.toFixed(4) || 'N/A'}, Val_Acc=${(metrics.val_accuracy * 100)?.toFixed(2) || 'N/A'}%`);
             }
           }
+          
+          setSessionData(data);
+          
+          if (data.status === 'completed' || data.status === 'failed') {
+            setIsTraining(false);
+            if (data.status === 'completed') {
+              console.log('✅ Training completed successfully!');
+              setMessage({ 
+                type: 'success', 
+                text: `Training completed! Final accuracy: ${(data.final_accuracy * 100).toFixed(2)}%` 
+              });
+            } else {
+              console.log('❌ Training failed:', data.error);
+              setMessage({ 
+                type: 'error', 
+                text: `Training failed: ${data.error}` 
+              });
+            }
+            websocket?.close();
+            setActiveWebSocket(null);
+          } else if (data.status === 'running') {
+            setIsTraining(true);
+          }
         } catch (error) {
-          console.error('Error fetching training status:', error);
+          console.error('❌ Failed to parse immediate WebSocket message:', error);
+          console.error('❌ Raw message that failed:', event.data);
         }
-      }, 1000);
+      };
+      
+      websocket.onerror = (error) => {
+        console.error('❌ Immediate WebSocket error:', error);
+        console.log('🔍 WebSocket readyState on error:', websocket?.readyState);
+        console.log('🔍 WebSocket URL on error:', websocket?.url);
+        setMessage({ type: 'error', text: 'WebSocket connection failed - please check backend is running' });
+        setActiveWebSocket(null);
+      };
+      
+      websocket.onclose = (event) => {
+        console.log('🔌 Immediate WebSocket connection closed');
+        console.log('🔍 Close event code:', event.code);
+        console.log('🔍 Close event reason:', event.reason);
+        console.log('🔍 Close event wasClean:', event.wasClean);
+        setActiveWebSocket(null);
+      };
+      
+      return websocket;
+    } catch (error) {
+      console.error('Failed to create immediate WebSocket:', error);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    let websocket: WebSocket | null = null;
+    
+    if (currentSession) {
+      console.log(`🔌 useEffect triggered for session: ${currentSession}`);
+      
+      // Only create WebSocket if no active connection exists
+      if (!activeWebSocket) {
+        console.log('📡 No active WebSocket found, creating new connection...');
+        
+        // Try WebSocket for real-time updates
+        try {
+          // Use relative WebSocket URL to work with proxy
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const host = window.location.hostname;
+          const port = process.env.NODE_ENV === 'development' ? '8000' : window.location.port;
+          const wsUrl = `${protocol}//${host}:${port}/ws/training/${currentSession}`;
+          
+          console.log(`🔗 useEffect WebSocket connection to: ${wsUrl}`);
+          websocket = new WebSocket(wsUrl);
+          
+          websocket.onopen = () => {
+            console.log('✅ useEffect WebSocket connected for real-time training updates');
+            setActiveWebSocket(websocket);
+            setMessage({ type: 'info', text: 'Connected to real-time training updates' });
+          };
+        
+          websocket.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              console.log('📡 Real-time update received:', data);
+              
+              // Enhanced logging for training progress
+              if (data.status === 'running' && data.current_epoch) {
+                console.log(`🔄 Training Progress: Epoch ${data.current_epoch}/${data.config?.epochs || '?'} (${data.progress?.toFixed(1) || 0}%)`);
+                if (data.current_metrics) {
+                  const metrics = data.current_metrics;
+                  console.log(`📊 Current Metrics: Loss=${metrics.train_loss?.toFixed(4) || 'N/A'}, Acc=${(metrics.train_accuracy * 100)?.toFixed(2) || 'N/A'}%, Val_Loss=${metrics.val_loss?.toFixed(4) || 'N/A'}, Val_Acc=${(metrics.val_accuracy * 100)?.toFixed(2) || 'N/A'}%`);
+                }
+              }
+              
+              setSessionData(data);
+              
+              if (data.status === 'completed' || data.status === 'failed') {
+                setIsTraining(false);
+                if (data.status === 'completed') {
+                  console.log('✅ Training completed successfully!');
+                  setMessage({ 
+                    type: 'success', 
+                    text: `Training completed! Final accuracy: ${(data.final_accuracy * 100).toFixed(2)}%` 
+                  });
+                } else {
+                  console.log('❌ Training failed:', data.error);
+                  setMessage({ 
+                    type: 'error', 
+                    text: `Training failed: ${data.error}` 
+                  });
+                }
+                websocket?.close();
+              } else if (data.status === 'running') {
+                setIsTraining(true);
+              }
+            } catch (error) {
+              console.error('Failed to parse WebSocket message:', error);
+            }
+          };
+          
+          websocket.onerror = (error) => {
+            console.error('❌ useEffect WebSocket error:', error);
+            setMessage({ type: 'error', text: 'WebSocket connection failed - please check backend is running' });
+            setActiveWebSocket(null);
+          };
+          
+          websocket.onclose = () => {
+            console.log('WebSocket connection closed');
+          };
+          
+        } catch (error) {
+          console.error('❌ Failed to create WebSocket:', error);
+          setMessage({ type: 'error', text: 'Failed to establish WebSocket connection - please check backend is running' });
+        }
+      } else {
+        console.log('🔗 Active WebSocket already exists, skipping duplicate connection');
+      }
+    } else {
+      console.log('📡 No active WebSocket found but also no currentSession');
     }
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (websocket) {
+        websocket.close();
+      }
+      // Don't close activeWebSocket here as it might be used elsewhere
     };
-  }, [currentSession, isTraining]);
+  }, [currentSession, activeWebSocket]);
 
   const startTraining = async () => {
     try {
       const response = await axios.post('/api/training/start', config);
-      setCurrentSession(response.data.session_id);
+      const sessionId = response.data.session_id;
+      
+      // Immediately set session and establish WebSocket connection
+      setCurrentSession(sessionId);
       setIsTraining(true);
       setSessionData(null);
-      setMessage({ type: 'info', text: 'Training started...' });
+      setMessage({ type: 'info', text: 'Training started... Connecting to real-time updates...' });
+      
+      // Immediately connect WebSocket (don't wait for useEffect)
+      console.log(`🚀 Training started with session: ${sessionId}`);
+      const immediateWebSocket = connectWebSocket(sessionId);
+      
+      if (immediateWebSocket) {
+        console.log('✅ Immediate WebSocket connection initiated');
+      } else {
+        console.log('⚠️ Immediate WebSocket failed, useEffect will handle fallback');
+      }
+      
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to start training' });
     }
@@ -151,6 +347,26 @@ const Training: React.FC = () => {
       {message && (
         <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage(null)}>
           {message.text}
+        </Alert>
+      )}
+
+      {/* Real-time Training Status */}
+      {isTraining && sessionData && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2" component="div">
+            <strong>🔄 Real-time Training Update:</strong><br />
+            Epoch {sessionData.current_epoch || 0}/{sessionData.config?.epochs || '?'} 
+            ({sessionData.progress?.toFixed(1) || 0}% complete)
+            {sessionData.current_metrics && (
+              <>
+                <br />
+                <strong>📊 Current Metrics:</strong> Loss: {(sessionData.current_metrics.train_loss || 0).toFixed(4)}, 
+                Acc: {((sessionData.current_metrics.train_accuracy || 0) * 100).toFixed(2)}%, 
+                Val Loss: {(sessionData.current_metrics.val_loss || 0).toFixed(4)}, 
+                Val Acc: {((sessionData.current_metrics.val_accuracy || 0) * 100).toFixed(2)}%
+              </>
+            )}
+          </Typography>
         </Alert>
       )}
 

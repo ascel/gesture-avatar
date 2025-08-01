@@ -20,7 +20,8 @@ from ..utils.data_preprocessing import GestureDataPreprocessor
 def train_feature_model(data_dir: str = "data/processed", 
                        model_save_dir: str = "data/models",
                        epochs: int = 200,
-                       batch_size: int = 32):
+                       batch_size: int = 32,
+                       callback=None):
     """Train optimized ResNet-inspired feature-based gesture recognition model."""
     print("🚀 Training Optimized ResNet Feature-Based Gesture Model")
     print("=" * 60)
@@ -67,7 +68,43 @@ def train_feature_model(data_dir: str = "data/processed",
     print("   • Class balancing for imbalanced datasets")
     print()
     
-    history = model.train(X_train, y_train, X_val, y_val, epochs, batch_size)
+    # Add callback to callbacks if provided
+    callbacks = []
+    if callback:
+        # Convert simple callback to proper Keras callback
+        try:
+            from tensorflow.keras.callbacks import Callback
+            print("✅ Using tensorflow.keras.callbacks.Callback")
+        except ImportError:
+            try:
+                from keras.callbacks import Callback
+                print("✅ Using keras.callbacks.Callback")
+            except ImportError:
+                print("❌ Failed to import Keras Callback - skipping callback")
+                # Continue without callback rather than failing
+                callbacks = []
+                callback = None
+        
+        if callback:  # Only create callback if import succeeded
+            class KerasMetricsCallback(Callback):
+                def __init__(self, simple_callback):
+                    super().__init__()
+                    self.simple_callback = simple_callback
+                    print(f"🔧 KerasMetricsCallback initialized with callback: {simple_callback}")
+                    
+                def on_epoch_end(self, epoch, logs=None):
+                    print(f"🔔 KerasMetricsCallback.on_epoch_end called for epoch {epoch + 1}")
+                    print(f"📋 Logs: {logs}")
+                    if hasattr(self.simple_callback, 'on_epoch_end'):
+                        print(f"✅ Calling simple_callback.on_epoch_end")
+                        self.simple_callback.on_epoch_end(epoch, logs)
+                    else:
+                        print(f"❌ simple_callback has no on_epoch_end method")
+                        print(f"Available methods: {dir(self.simple_callback)}")
+            
+            callbacks.append(KerasMetricsCallback(callback))
+    
+    history = model.train(X_train, y_train, X_val, y_val, epochs, batch_size, callbacks=callbacks)
     
     # Evaluate model
     print("\nEvaluating model...")
@@ -289,7 +326,8 @@ def train_efficientnet_model(data_dir: str = "data/raw",
 def train_efficientnet1d_model(data_dir: str = "data/processed", 
                               model_save_dir: str = "data/models", 
                               epochs: int = 200, 
-                              batch_size: int = 32):
+                              batch_size: int = 32,
+                              callback=None):
     """Train EfficientNet1D-based feature gesture recognition model."""
     print("🚀 Training EfficientNet1D Landmark Gesture Model")
     print("=" * 60)
@@ -314,7 +352,43 @@ def train_efficientnet1d_model(data_dir: str = "data/processed",
     model = EfficientNet1DLandmarkModel()
     model.feature_scaler = feature_scaler
     model.label_encoder = label_encoder
-    history = model.train(X_train, y_train, X_val, y_val, epochs, batch_size)
+    # Add callback to callbacks if provided
+    callbacks = []
+    if callback:
+        # Convert simple callback to proper Keras callback
+        try:
+            from tensorflow.keras.callbacks import Callback
+            print("✅ EfficientNet using tensorflow.keras.callbacks.Callback")
+        except ImportError:
+            try:
+                from keras.callbacks import Callback
+                print("✅ EfficientNet using keras.callbacks.Callback")
+            except ImportError:
+                print("❌ EfficientNet failed to import Keras Callback - skipping callback")
+                # Continue without callback rather than failing
+                callbacks = []
+                callback = None
+        
+        if callback:  # Only create callback if import succeeded
+            class KerasMetricsCallback(Callback):
+                def __init__(self, simple_callback):
+                    super().__init__()
+                    self.simple_callback = simple_callback
+                    print(f"🔧 EfficientNet KerasMetricsCallback initialized with callback: {simple_callback}")
+                
+                def on_epoch_end(self, epoch, logs=None):
+                    print(f"🔔 EfficientNet KerasMetricsCallback.on_epoch_end called for epoch {epoch + 1}")
+                    print(f"📋 Logs: {logs}")
+                    if hasattr(self.simple_callback, 'on_epoch_end'):
+                        print(f"✅ Calling simple_callback.on_epoch_end")
+                        self.simple_callback.on_epoch_end(epoch, logs)
+                    else:
+                        print(f"❌ simple_callback has no on_epoch_end method")
+                        print(f"Available methods: {dir(self.simple_callback)}")
+        
+            callbacks.append(KerasMetricsCallback(callback))
+    
+    history = model.train(X_train, y_train, X_val, y_val, epochs, batch_size, callbacks=callbacks)
     print("\nEvaluating model...")
     X_test_reshaped = np.expand_dims(X_test, axis=-1)
     y_pred = model.model.predict(X_test_reshaped)
