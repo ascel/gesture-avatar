@@ -66,13 +66,13 @@ def configure_gpu():
         return False
 
 try:
-    from gesture_detection.train_models import train_feature_model, train_image_model
+    from gesture_detection.train_models import train_feature_model, train_image_model, train_efficientnet1d_model
     from utils.data_preprocessing import GestureDataPreprocessor
 except ImportError:
     # Fallback imports for when running from scripts directory
     import sys
     sys.path.append(str(Path(__file__).parent.parent))
-    from src.gesture_detection.train_models import train_feature_model, train_image_model
+    from src.gesture_detection.train_models import train_feature_model, train_image_model, train_efficientnet1d_model
     from src.utils.data_preprocessing import GestureDataPreprocessor
 
 class ModelRetrainer:
@@ -472,7 +472,14 @@ class ModelRetrainer:
         # 4. Train models
         feature_model, feature_results = self.train_feature_model(epochs, batch_size)
         image_model, image_results = self.train_image_model(epochs // 2)  # Fewer epochs for image model
-        
+        # EfficientNet1D model
+        efficientnet1d_model, efficientnet1d_results = train_efficientnet1d_model(
+            data_dir=str(self.processed_path),
+            model_save_dir=str(self.models_path),
+            epochs=epochs,
+            batch_size=batch_size
+        )
+        self.training_results['efficientnet1d_model'] = efficientnet1d_results
         # 5. Compare with previous model
         self.compare_with_previous_model()
         

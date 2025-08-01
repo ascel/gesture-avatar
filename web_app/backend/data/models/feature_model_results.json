@@ -1,0 +1,60 @@
+{
+  "model_type": "resnet_feature_based",
+  "architecture": "ResNet-inspired with attention",
+  "training_date": "2025-08-01T20:11:19.318745",
+  "model_path": "data\\models\\feature_gesture_model.h5",
+  "training_history": {
+    "final_accuracy": 0.625,
+    "final_val_accuracy": 0.543749988079071,
+    "final_loss": 0.9694758653640747,
+    "final_val_loss": 1.2318978309631348,
+    "epochs_trained": 50,
+    "best_val_accuracy": 0.550000011920929,
+    "best_accuracy": 0.6333333253860474
+  },
+  "test_results": {
+    "accuracy": 0.515,
+    "macro_avg_f1": 0.516506039187308,
+    "weighted_avg_f1": 0.516506039187308
+  },
+  "class_metrics": {
+    "fist": {
+      "precision": 0.640625,
+      "recall": 0.5125,
+      "f1-score": 0.5694444444444444,
+      "support": 80.0
+    },
+    "open_hand": {
+      "precision": 0.7012987012987013,
+      "recall": 0.675,
+      "f1-score": 0.6878980891719745,
+      "support": 80.0
+    },
+    "peace": {
+      "precision": 0.5396825396825397,
+      "recall": 0.425,
+      "f1-score": 0.4755244755244755,
+      "support": 80.0
+    },
+    "point": {
+      "precision": 0.35443037974683544,
+      "recall": 0.35,
+      "f1-score": 0.3522012578616352,
+      "support": 80.0
+    },
+    "thumbs_up": {
+      "precision": 0.4188034188034188,
+      "recall": 0.6125,
+      "f1-score": 0.49746192893401014,
+      "support": 80.0
+    }
+  },
+  "optimization_features": [
+    "Residual connections",
+    "Attention mechanisms",
+    "Batch normalization",
+    "AdamW optimizer",
+    "Class balancing",
+    "Advanced callbacks"
+  ]
+}

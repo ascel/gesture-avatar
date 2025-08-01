@@ -1,0 +1,61 @@
+{
+  "model_type": "efficientnet1d_feature_based",
+  "architecture": "EfficientNet1D-inspired",
+  "training_date": "2025-07-28T19:26:51.388519",
+  "model_path": "data\\models\\efficientnet1d_gesture_model.h5",
+  "training_history": {
+    "final_accuracy": 1.0,
+    "final_val_accuracy": 1.0,
+    "final_loss": 0.0013181180693209171,
+    "final_val_loss": 0.0027106855995953083,
+    "epochs_trained": 97,
+    "best_val_accuracy": 1.0,
+    "best_accuracy": 1.0
+  },
+  "test_results": {
+    "accuracy": 0.995,
+    "macro_avg_f1": 0.9949992186279106,
+    "weighted_avg_f1": 0.9949992186279107
+  },
+  "class_metrics": {
+    "fist": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 40.0
+    },
+    "open_hand": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 40.0
+    },
+    "peace": {
+      "precision": 0.975609756097561,
+      "recall": 1.0,
+      "f1-score": 0.9876543209876543,
+      "support": 40.0
+    },
+    "point": {
+      "precision": 1.0,
+      "recall": 0.975,
+      "f1-score": 0.9873417721518988,
+      "support": 40.0
+    },
+    "thumbs_up": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 40.0
+    }
+  },
+  "optimization_features": [
+    "1D Conv blocks",
+    "Batch normalization",
+    "GlobalAveragePooling1D",
+    "Adam optimizer",
+    "EarlyStopping",
+    "ModelCheckpoint",
+    "ReduceLROnPlateau"
+  ]
+}

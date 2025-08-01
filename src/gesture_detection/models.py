@@ -380,7 +380,7 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
     
     def train(self, X_train: np.ndarray, y_train: np.ndarray,
               X_val: np.ndarray, y_val: np.ndarray,
-              epochs: int = 200, batch_size: int = 32):
+              epochs: int = 200, batch_size: int = 32, callbacks=None):
         """Train the optimized ResNet-inspired model with GPU acceleration."""
         # Configure GPU if available
         gpu_available = configure_gpu()
@@ -407,7 +407,7 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
         print()
         
         # Advanced callbacks
-        callbacks = [
+        default_callbacks = [
             GestureTrainingCallback(patience=20, min_delta=0.001),
             ModelCheckpoint(
                 'data/models/best_gesture_model.h5', 
@@ -423,6 +423,10 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
                 mode='min'
             )
         ]
+        
+        # Add custom callback if provided
+        if callbacks is not None:
+            default_callbacks.extend(callbacks)
         
         # Train with class weights for imbalanced datasets
         from sklearn.utils.class_weight import compute_class_weight
@@ -444,7 +448,7 @@ class FeatureBasedGestureModel(GestureRecognitionModel):
             validation_data=(X_val, y_val),
             epochs=epochs,
             batch_size=batch_size,
-            callbacks=callbacks,
+            callbacks=default_callbacks,
             class_weight=class_weight_dict,
             verbose=1,
             shuffle=True
@@ -802,7 +806,7 @@ class EfficientNet1DLandmarkModel(GestureRecognitionModel):
 
     def train(self, X_train: np.ndarray, y_train: np.ndarray,
               X_val: np.ndarray, y_val: np.ndarray,
-              epochs: int = 200, batch_size: int = 32):
+              epochs: int = 200, batch_size: int = 32, callbacks=None):
         gpu_available = configure_gpu()
         num_classes = len(np.unique(y_train))
         input_dim = X_train.shape[1]
@@ -810,11 +814,15 @@ class EfficientNet1DLandmarkModel(GestureRecognitionModel):
         X_train_reshaped = np.expand_dims(X_train, axis=-1)
         X_val_reshaped = np.expand_dims(X_val, axis=-1)
         self.model = self.build_model(num_classes, input_dim)
-        callbacks = [
+        default_callbacks = [
             EarlyStopping(patience=20, restore_best_weights=True),
             ModelCheckpoint('data/models/best_efficientnet1d_gesture_model.h5', save_best_only=True, monitor='val_accuracy', mode='max'),
             ReduceLROnPlateau(factor=0.7, patience=10, min_lr=1e-7, monitor='val_loss', mode='min')
         ]
+        
+        # Add custom callback if provided
+        if callbacks is not None:
+            default_callbacks.extend(callbacks)
         from sklearn.utils.class_weight import compute_class_weight
         class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
         class_weight_dict = dict(zip(np.unique(y_train), class_weights))
@@ -823,7 +831,7 @@ class EfficientNet1DLandmarkModel(GestureRecognitionModel):
             validation_data=(X_val_reshaped, y_val),
             epochs=epochs,
             batch_size=batch_size,
-            callbacks=callbacks,
+            callbacks=default_callbacks,
             class_weight=class_weight_dict,
             verbose=1,
             shuffle=True

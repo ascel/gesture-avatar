@@ -1,0 +1,312 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Grid,
+  Alert,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+} from '@mui/material';
+import {
+  Storage,
+  CheckCircle,
+  Refresh,
+  Download,
+  Delete,
+} from '@mui/icons-material';
+import axios from 'axios';
+
+interface Model {
+  name: string;
+  path: string;
+  size: number;
+  modified: string;
+  is_active: boolean;
+  accuracy?: number;
+  model_type?: string;
+}
+
+const ModelManagement: React.FC = () => {
+  const [models, setModels] = useState<Model[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  useEffect(() => {
+    fetchModels();
+  }, []);
+
+  const fetchModels = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get('/api/models/list');
+      setModels(response.data.models);
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to fetch models' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const activateModel = async (modelPath: string) => {
+    try {
+      await axios.post('/api/models/activate', null, {
+        params: { model_path: modelPath }
+      });
+      setMessage({ type: 'success', text: 'Model activated successfully' });
+      fetchModels(); // Refresh the list
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to activate model' });
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  const getModelTypeColor = (type?: string) => {
+    switch (type) {
+      case 'resnet':
+        return 'primary';
+      case 'efficientnet':
+        return 'secondary';
+      default:
+        return 'default';
+    }
+  };
+
+  return (
+    <Box>
+      <Typography variant="h4" gutterBottom>
+        Model Management
+      </Typography>
+
+      {message && (
+        <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage(null)}>
+          {message.text}
+        </Alert>
+      )}
+
+      {/* Summary Cards */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Total Models
+              </Typography>
+              <Typography variant="h4">
+                {models.length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                Active Models
+              </Typography>
+              <Typography variant="h4">
+                {models.filter(m => m.is_active).length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                ResNet Models
+              </Typography>
+              <Typography variant="h4">
+                {models.filter(m => m.model_type === 'resnet').length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography color="textSecondary" gutterBottom>
+                EfficientNet Models
+              </Typography>
+              <Typography variant="h4">
+                {models.filter(m => m.model_type === 'efficientnet').length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Models Table */}
+      <Card>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              Available Models
+            </Typography>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={fetchModels}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          </Box>
+
+          {loading ? (
+            <Typography>Loading models...</Typography>
+          ) : models.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Storage sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="h6" color="textSecondary" gutterBottom>
+                No models found
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Train your first model to see it here
+              </Typography>
+            </Box>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Model Name</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Size</TableCell>
+                    <TableCell>Accuracy</TableCell>
+                    <TableCell>Modified</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {models.map((model) => (
+                    <TableRow key={model.name}>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="medium">
+                          {model.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={model.model_type || 'Unknown'}
+                          size="small"
+                          color={getModelTypeColor(model.model_type)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {formatFileSize(model.size)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {model.accuracy ? (
+                          <Typography variant="body2">
+                            {(model.accuracy * 100).toFixed(2)}%
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="textSecondary">
+                            N/A
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="textSecondary">
+                          {formatDate(model.modified)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {model.is_active ? (
+                          <Chip
+                            icon={<CheckCircle />}
+                            label="Active"
+                            size="small"
+                            color="success"
+                          />
+                        ) : (
+                          <Chip
+                            label="Inactive"
+                            size="small"
+                            variant="outlined"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          {!model.is_active && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => activateModel(model.path)}
+                            >
+                              Activate
+                            </Button>
+                          )}
+                          <IconButton size="small" color="primary">
+                            <Download />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Information Card */}
+      <Card sx={{ mt: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Model Management Guide
+          </Typography>
+          <Typography variant="body2" color="textSecondary" paragraph>
+            This page allows you to manage your trained gesture recognition models:
+          </Typography>
+          
+          <Box sx={{ pl: 2 }}>
+            <Typography variant="body2" paragraph>
+              <strong>Activate Model:</strong> Set a model as active for real-time inference. Only one model can be active at a time.
+            </Typography>
+            
+            <Typography variant="body2" paragraph>
+              <strong>Model Types:</strong> ResNet and EfficientNet models are supported, each with different performance characteristics.
+            </Typography>
+            
+            <Typography variant="body2" paragraph>
+              <strong>Performance:</strong> Check the accuracy column to compare model performance before activation.
+            </Typography>
+            
+            <Typography variant="body2">
+              <strong>Storage:</strong> Models are stored locally and can be downloaded for backup or sharing.
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+};
+
+export default ModelManagement; 
