@@ -646,6 +646,7 @@ async def run_training_async(session_id: str, config: TrainingConfig):
             def __init__(self, session_id: str, total_epochs: int):
                 self.session_id = session_id
                 self.total_epochs = total_epochs
+                self.loop = asyncio.get_event_loop()  # Get the main event loop
                 logger.info(f"🔧 RealTimeMetricsCallback created for session {session_id}")
                 
             def on_epoch_end(self, epoch, logs=None):
@@ -655,6 +656,21 @@ async def run_training_async(session_id: str, config: TrainingConfig):
                     logger.info(f"Session ID: {self.session_id}")
                     logger.info(f"Logs available: {logs is not None}")
                     
+                    # Use asyncio.run_coroutine_threadsafe to safely update from thread
+                    asyncio.run_coroutine_threadsafe(
+                        self._update_session_async(current_epoch, logs),
+                        self.loop
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error in callback: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    # Continue training even if callback fails
+            
+            async def _update_session_async(self, current_epoch, logs):
+                """Async method to update session data safely from thread."""
+                try:
                     if self.session_id in training_sessions and logs is not None:
                         session = training_sessions[self.session_id]
                         
@@ -717,10 +733,9 @@ async def run_training_async(session_id: str, config: TrainingConfig):
                             logger.warning("📋 Logs is None!")
                             
                 except Exception as e:
-                    logger.error(f"❌ Error in callback: {e}")
+                    logger.error(f"❌ Error in async session update: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
-                    # Continue training even if callback fails
         
         # Note: The callback will be converted to a proper Keras callback in the training functions
         # This is handled in the train_feature_model and train_efficientnet1d_model functions

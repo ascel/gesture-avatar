@@ -1,51 +1,51 @@
 {
   "model_type": "resnet_feature_based",
   "architecture": "ResNet-inspired with attention",
-  "training_date": "2025-08-01T19:59:24.633896",
+  "training_date": "2025-08-01T20:03:13.314672",
   "model_path": "data\\models\\feature_gesture_model.h5",
   "training_history": {
-    "final_accuracy": 0.24097222089767456,
-    "final_val_accuracy": 0.22499999403953552,
-    "final_loss": 1.597077488899231,
-    "final_val_loss": 1.6268081665039062,
+    "final_accuracy": 0.25902777910232544,
+    "final_val_accuracy": 0.29374998807907104,
+    "final_loss": 1.5825473070144653,
+    "final_val_loss": 1.572845458984375,
     "epochs_trained": 10,
-    "best_val_accuracy": 0.2562499940395355,
-    "best_accuracy": 0.2430555522441864
+    "best_val_accuracy": 0.30000001192092896,
+    "best_accuracy": 0.25902777910232544
   },
   "test_results": {
-    "accuracy": 0.25,
-    "macro_avg_f1": 0.21949168343537168,
-    "weighted_avg_f1": 0.21949168343537168
+    "accuracy": 0.265,
+    "macro_avg_f1": 0.20828817480362813,
+    "weighted_avg_f1": 0.20828817480362813
   },
   "class_metrics": {
     "fist": {
-      "precision": 0.23255813953488372,
-      "recall": 0.25,
-      "f1-score": 0.24096385542168675,
+      "precision": 0.3076923076923077,
+      "recall": 0.45,
+      "f1-score": 0.36548223350253806,
       "support": 80.0
     },
     "open_hand": {
+      "precision": 0.2782608695652174,
+      "recall": 0.4,
+      "f1-score": 0.3282051282051282,
+      "support": 80.0
+    },
+    "peace": {
+      "precision": 0.22929936305732485,
+      "recall": 0.45,
+      "f1-score": 0.3037974683544304,
+      "support": 80.0
+    },
+    "point": {
       "precision": 0.0,
       "recall": 0.0,
       "f1-score": 0.0,
       "support": 80.0
     },
-    "peace": {
-      "precision": 0.2891566265060241,
-      "recall": 0.3,
-      "f1-score": 0.294478527607362,
-      "support": 80.0
-    },
-    "point": {
-      "precision": 0.2345679012345679,
-      "recall": 0.2375,
-      "f1-score": 0.2360248447204969,
-      "support": 80.0
-    },
     "thumbs_up": {
-      "precision": 0.25170068027210885,
-      "recall": 0.4625,
-      "f1-score": 0.32599118942731276,
+      "precision": 0.18181818181818182,
+      "recall": 0.025,
+      "f1-score": 0.04395604395604396,
       "support": 80.0
     }
   },
