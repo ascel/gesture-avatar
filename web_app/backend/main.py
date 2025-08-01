@@ -21,6 +21,10 @@ import numpy as np
 import cv2
 import base64
 
+# Fix matplotlib threading issues by setting non-GUI backend
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -646,7 +650,6 @@ async def run_training_async(session_id: str, config: TrainingConfig):
             def __init__(self, session_id: str, total_epochs: int):
                 self.session_id = session_id
                 self.total_epochs = total_epochs
-                self.loop = asyncio.get_event_loop()  # Get the main event loop
                 logger.info(f"🔧 RealTimeMetricsCallback created for session {session_id}")
                 
             def on_epoch_end(self, epoch, logs=None):
@@ -656,11 +659,9 @@ async def run_training_async(session_id: str, config: TrainingConfig):
                     logger.info(f"Session ID: {self.session_id}")
                     logger.info(f"Logs available: {logs is not None}")
                     
-                    # Use asyncio.run_coroutine_threadsafe to safely update from thread
-                    asyncio.run_coroutine_threadsafe(
-                        self._update_session_async(current_epoch, logs),
-                        self.loop
-                    )
+                    # Use a simpler approach - directly update in the callback thread
+                    # The WebSocket loop will detect changes and send updates
+                    self._update_session_sync(current_epoch, logs)
                     
                 except Exception as e:
                     logger.error(f"❌ Error in callback: {e}")
@@ -668,8 +669,8 @@ async def run_training_async(session_id: str, config: TrainingConfig):
                     logger.error(traceback.format_exc())
                     # Continue training even if callback fails
             
-            async def _update_session_async(self, current_epoch, logs):
-                """Async method to update session data safely from thread."""
+            def _update_session_sync(self, current_epoch, logs):
+                """Synchronous method to update session data directly."""
                 try:
                     if self.session_id in training_sessions and logs is not None:
                         session = training_sessions[self.session_id]
@@ -733,7 +734,7 @@ async def run_training_async(session_id: str, config: TrainingConfig):
                             logger.warning("📋 Logs is None!")
                             
                 except Exception as e:
-                    logger.error(f"❌ Error in async session update: {e}")
+                    logger.error(f"❌ Error in sync session update: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
         
