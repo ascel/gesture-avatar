@@ -166,6 +166,14 @@ def train_feature_model(data_dir: str = "data/processed",
     }
     
     # Write per-model metadata JSON next to the .h5 for UI listing
+    # Ensure val accuracy fields are present for UI sorting
+    results.setdefault('training_history', {})
+    th = results['training_history']
+    # Guard in case keys are missing
+    if 'final_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['final_val_accuracy'] = float(history.history['val_accuracy'][-1])
+    if 'best_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['best_val_accuracy'] = float(max(history.history['val_accuracy']))
     metadata_path = model_save_path.with_suffix('.json')
     with open(metadata_path, 'w') as f:
         json.dump(results, f, indent=2)
@@ -248,6 +256,13 @@ def train_image_model(data_dir: str = "data/raw",
             ]
         }
         
+        # Ensure val accuracy fields exist for UI sorting
+        results.setdefault('training_history', {})
+        th = results['training_history']
+        if 'final_val_accuracy' not in th and 'val_accuracy' in history.history:
+            th['final_val_accuracy'] = float(history.history['val_accuracy'][-1])
+        if 'best_val_accuracy' not in th and 'val_accuracy' in history.history:
+            th['best_val_accuracy'] = float(max(history.history['val_accuracy']))
         results_path = model_save_path.parent / "image_model_results.json"
         with open(results_path, 'w') as f:
             json.dump(results, f, indent=2)
@@ -385,6 +400,13 @@ def train_efficientnet1d_model(data_dir: str = "data/processed",
         ]
     }
     # Write per-model metadata next to the .h5
+    # Ensure val accuracy fields are present for UI sorting
+    results.setdefault('training_history', {})
+    th = results['training_history']
+    if 'final_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['final_val_accuracy'] = float(history.history['val_accuracy'][-1])
+    if 'best_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['best_val_accuracy'] = float(max(history.history['val_accuracy']))
     metadata_path = model_save_path.with_suffix('.json')
     with open(metadata_path, 'w') as f:
         json.dump(results, f, indent=2)

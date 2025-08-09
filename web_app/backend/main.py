@@ -80,17 +80,30 @@ def train_single_model(model_backbone: str, data_dir: str, epochs: int, batch_si
                 model_base_name = Path(produced_model_path).stem or f"feature_gesture_model_{timestamp}"
 
                 # Save metadata next to model (non-destructive)
-                metadata = {
-                    'model_type': 'resnet',
-                    'timestamp': derived_timestamp or timestamp,
-                    'model_base_name': model_base_name,
-                    'model_path': produced_model_path,
-                    'training_config': {
-                        'epochs': epochs,
-                        'batch_size': batch_size
-                    },
-                    'training_date': datetime.now().isoformat()
+                # Merge training results metadata if available to avoid losing accuracy fields
+                metadata = {}
+                try:
+                    if isinstance(results, dict):
+                        metadata.update(results)
+                except Exception:
+                    pass
+                # Ensure wrapper fields are present or updated
+                metadata.setdefault('model_type', 'resnet')
+                metadata.setdefault('training_date', datetime.now().isoformat())
+                metadata['timestamp'] = metadata.get('timestamp') or derived_timestamp or timestamp
+                metadata['model_path'] = produced_model_path
+                metadata['model_base_name'] = model_base_name
+                wrapper_config = {
+                    'epochs': epochs,
+                    'batch_size': batch_size
                 }
+                # Attach/merge training_config without discarding deeper metadata
+                existing_cfg = metadata.get('training_config') or {}
+                if isinstance(existing_cfg, dict):
+                    existing_cfg.update(wrapper_config)
+                    metadata['training_config'] = existing_cfg
+                else:
+                    metadata['training_config'] = wrapper_config
                 metadata_path = Path(produced_model_path).with_suffix('.json')
                 try:
                     with open(metadata_path, 'w') as f:
@@ -134,17 +147,29 @@ def train_single_model(model_backbone: str, data_dir: str, epochs: int, batch_si
                     pass
                 model_base_name = Path(produced_model_path).stem or f"efficientnet1d_gesture_model_{timestamp}"
 
-                metadata = {
-                    'model_type': 'efficientnet1d',
-                    'timestamp': derived_timestamp or timestamp,
-                    'model_base_name': model_base_name,
-                    'model_path': produced_model_path,
-                    'training_config': {
-                        'epochs': epochs,
-                        'batch_size': batch_size
-                    },
-                    'training_date': datetime.now().isoformat()
+                # Merge training results metadata if available to avoid losing accuracy fields
+                metadata = {}
+                try:
+                    if isinstance(results, dict):
+                        metadata.update(results)
+                except Exception:
+                    pass
+                # Ensure wrapper fields are present or updated
+                metadata.setdefault('model_type', 'efficientnet1d')
+                metadata.setdefault('training_date', datetime.now().isoformat())
+                metadata['timestamp'] = metadata.get('timestamp') or derived_timestamp or timestamp
+                metadata['model_path'] = produced_model_path
+                metadata['model_base_name'] = model_base_name
+                wrapper_config = {
+                    'epochs': epochs,
+                    'batch_size': batch_size
                 }
+                existing_cfg = metadata.get('training_config') or {}
+                if isinstance(existing_cfg, dict):
+                    existing_cfg.update(wrapper_config)
+                    metadata['training_config'] = existing_cfg
+                else:
+                    metadata['training_config'] = wrapper_config
 
                 metadata_path = Path(produced_model_path).with_suffix('.json')
                 try:
@@ -740,12 +765,20 @@ async def list_models():
         if models_dir.exists():
             # Look for timestamped run models in runs/<timestamp>/
             for model_file in (models_dir / "runs").rglob("*.h5") if (models_dir / "runs").exists() else []:
+                # Robust active flag comparison using resolved absolute paths
+                is_active_flag = False
+                try:
+                    if active_model_path:
+                        is_active_flag = Path(model_file).resolve() == Path(active_model_path).resolve()
+                except Exception:
+                    is_active_flag = str(model_file) == (active_model_path or "")
+
                 model_info = {
                     "name": model_file.stem,
                     "path": str(model_file),
                     "size": model_file.stat().st_size,
                     "modified": datetime.fromtimestamp(model_file.stat().st_mtime).isoformat(),
-                    "is_active": str(model_file) == active_model_path,
+                    "is_active": is_active_flag,
                     "model_type": "unknown",
                     "timestamp": None,
                     "training_date": None,
@@ -766,6 +799,9 @@ async def list_models():
                                 "training_config": metadata.get("training_config", {}),
                                 "class_metrics": metadata.get("class_metrics", {})
                             })
+                            # If training_date exists, prefer it as "modified" for UI clarity
+                            if metadata.get("training_date"):
+                                model_info["modified"] = metadata.get("training_date")
                     except Exception as e:
                         logger.warning(f"Could not load metadata for {model_file}: {e}")
                 

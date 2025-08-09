@@ -39,6 +39,9 @@ interface Model {
   is_active: boolean;
   accuracy?: number;
   model_type?: string;
+  timestamp?: string;
+  training_date?: string;
+  final_accuracy?: number;
 }
 
 const ModelManagement: React.FC = () => {
@@ -56,7 +59,8 @@ const ModelManagement: React.FC = () => {
     try {
       setLoading(true);
       const response = await axios.get('/api/models/list');
-      setModels(response.data.models);
+      const ms: Model[] = response.data.models || [];
+      setModels(ms);
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to fetch models' });
     } finally {
@@ -114,7 +118,9 @@ const ModelManagement: React.FC = () => {
   const deleteModel = async () => {
     if (!pendingDelete) return;
     try {
-      await axios.delete(`/api/models/${encodeURIComponent(pendingDelete.name)}`);
+      await axios.delete(`/api/models/${encodeURIComponent(pendingDelete.name)}`, {
+        params: { model_path: pendingDelete.path }
+      });
       setMessage({ type: 'success', text: `Deleted model: ${pendingDelete.name}` });
       handleCloseConfirm();
       fetchModels();
@@ -122,6 +128,8 @@ const ModelManagement: React.FC = () => {
       setMessage({ type: 'error', text: `Failed to delete model: ${pendingDelete.name}` });
     }
   };
+
+  // No sorting controls; show final accuracy only
 
   return (
     <Box>
@@ -194,14 +202,16 @@ const ModelManagement: React.FC = () => {
             <Typography variant="h6">
               Available Models
             </Typography>
-            <Button
-              variant="outlined"
-              startIcon={<Refresh />}
-              onClick={fetchModels}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                startIcon={<Refresh />}
+                onClick={fetchModels}
+                disabled={loading}
+              >
+                Refresh
+              </Button>
+            </Box>
           </Box>
 
           {loading ? (
@@ -223,8 +233,8 @@ const ModelManagement: React.FC = () => {
                   <TableRow>
                     <TableCell>Model Name</TableCell>
                     <TableCell>Type</TableCell>
-                    <TableCell>Size</TableCell>
                     <TableCell>Accuracy</TableCell>
+                    <TableCell>Size</TableCell>
                     <TableCell>Modified</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Actions</TableCell>
@@ -246,20 +256,16 @@ const ModelManagement: React.FC = () => {
                         />
                       </TableCell>
                       <TableCell>
+                        {typeof model.final_accuracy === 'number' ? (
+                          <Chip size="small" color="success" label={`${(model.final_accuracy * 100).toFixed(2)}%`} />
+                        ) : (
+                          <Typography variant="body2" color="textSecondary">N/A</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <Typography variant="body2">
                           {formatFileSize(model.size)}
                         </Typography>
-                      </TableCell>
-                      <TableCell>
-                        {model.accuracy ? (
-                          <Typography variant="body2">
-                            {(model.accuracy * 100).toFixed(2)}%
-                          </Typography>
-                        ) : (
-                          <Typography variant="body2" color="textSecondary">
-                            N/A
-                          </Typography>
-                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" color="textSecondary">
