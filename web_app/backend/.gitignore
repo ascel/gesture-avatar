@@ -13,3 +13,5 @@ __pycache__/
 
 /data/raw/
 /data/processed/
+/data/preprocessing_results.json
+/data/preprocessing_config.json
