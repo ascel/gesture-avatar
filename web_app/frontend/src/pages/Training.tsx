@@ -106,13 +106,14 @@ const Training: React.FC = () => {
       console.log('  - Current location:', window.location.href);
       
       const websocket = new WebSocket(wsUrl);
+      // Mark active immediately to avoid duplicate connection via useEffect
+      setActiveWebSocket(websocket);
       
       websocket.onopen = () => {
         console.log('✅ Immediate WebSocket connected successfully!');
         console.log('🔍 WebSocket readyState:', websocket?.readyState);
         console.log('🔍 WebSocket URL:', websocket?.url);
-        setActiveWebSocket(websocket);
-        setMessage({ type: 'success', text: 'Real-time training updates connected!' });
+        // Do not set a global toast here; avoid flicker with completion message
         
         // Test if WebSocket can receive data by checking session status immediately
         console.log('🧪 Testing WebSocket - should receive initial session data within 1-2 seconds...');
@@ -212,12 +213,13 @@ const Training: React.FC = () => {
           
           console.log(`🔗 useEffect WebSocket connection to: ${wsUrl}`);
           websocket = new WebSocket(wsUrl);
+          // Mark active immediately to avoid race with the immediate connector
+          setActiveWebSocket(websocket);
           
           websocket.onopen = () => {
             // Only log connection established
             console.log('✅ WebSocket connected for real-time training updates');
-            setActiveWebSocket(websocket);
-            setMessage({ type: 'success', text: 'Real-time training updates connected!' });
+            // Avoid setting a global message to prevent flicker
           };
         
           websocket.onmessage = (event) => {

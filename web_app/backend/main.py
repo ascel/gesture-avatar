@@ -42,28 +42,134 @@ from src.gesture_detection.train_models import train_feature_model, train_effici
 import mediapipe as mp
 
 def train_single_model(model_backbone: str, data_dir: str, epochs: int, batch_size: int, callback=None):
-    """Train a single model based on the selected backbone."""
+    """Train a single model based on the selected backbone with timestamp naming."""
     logger.info(f"Training single {model_backbone} model...")
     logger.info(f"Callback provided: {callback is not None}")
     
+    # Create timestamp for unique naming
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     if model_backbone == "resnet":
         logger.info("Calling train_feature_model for ResNet...")
-        return train_feature_model(
+        from src.gesture_detection.train_models import train_feature_model
+        result = train_feature_model(
             data_dir=data_dir,
             epochs=epochs,
             batch_size=batch_size,
             callback=callback
         )
+        
+        if isinstance(result, tuple) and len(result) == 2:
+            model, results = result
+            if isinstance(results, dict):
+                # Use the path produced by the training function (already timestamped)
+                produced_model_path = results.get("model_path") or ""
+                produced_model_path = str(produced_model_path)
+                # Derive timestamp and base name from filename if not provided
+                derived_timestamp = results.get('timestamp')
+                try:
+                    if not derived_timestamp and produced_model_path:
+                        stem = Path(produced_model_path).stem
+                        # Expect pattern feature_gesture_model_<timestamp>
+                        parts = stem.split('_')
+                        if len(parts) >= 4:
+                            derived_timestamp = parts[-1]
+                except Exception:
+                    pass
+                model_base_name = Path(produced_model_path).stem or f"feature_gesture_model_{timestamp}"
+
+                # Save metadata next to model (non-destructive)
+                metadata = {
+                    'model_type': 'resnet',
+                    'timestamp': derived_timestamp or timestamp,
+                    'model_base_name': model_base_name,
+                    'model_path': produced_model_path,
+                    'training_config': {
+                        'epochs': epochs,
+                        'batch_size': batch_size
+                    },
+                    'training_date': datetime.now().isoformat()
+                }
+                metadata_path = Path(produced_model_path).with_suffix('.json')
+                try:
+                    with open(metadata_path, 'w') as f:
+                        json.dump(metadata, f, indent=2)
+                except Exception as e:
+                    logger.warning(f"Failed writing metadata: {e}")
+
+                return {
+                    "final_accuracy": results.get("test_results", {}).get("accuracy", 
+                                                results.get("training_history", {}).get("final_accuracy", 0.0)),
+                    "model_path": produced_model_path,
+                    "model_base_name": model_base_name,
+                    "training_history": results.get("training_history", {}),
+                    "test_results": results.get("test_results", {}),
+                    "metadata": metadata
+                }
+        
     elif model_backbone == "efficientnet":
         logger.info("Calling train_efficientnet1d_model for EfficientNet...")
-        return train_efficientnet1d_model(
+        from src.gesture_detection.train_models import train_efficientnet1d_model
+        result = train_efficientnet1d_model(
             data_dir=data_dir,
             epochs=epochs,
             batch_size=batch_size,
             callback=callback
         )
-    else:
-        raise ValueError(f"Unsupported backbone: {model_backbone}")
+        
+        if isinstance(result, tuple) and len(result) == 2:
+            model, results = result
+            if isinstance(results, dict):
+                produced_model_path = results.get("model_path") or ""
+                produced_model_path = str(produced_model_path)
+                derived_timestamp = results.get('timestamp')
+                try:
+                    if not derived_timestamp and produced_model_path:
+                        stem = Path(produced_model_path).stem
+                        parts = stem.split('_')
+                        if len(parts) >= 4:
+                            derived_timestamp = parts[-1]
+                except Exception:
+                    pass
+                model_base_name = Path(produced_model_path).stem or f"efficientnet1d_gesture_model_{timestamp}"
+
+                metadata = {
+                    'model_type': 'efficientnet1d',
+                    'timestamp': derived_timestamp or timestamp,
+                    'model_base_name': model_base_name,
+                    'model_path': produced_model_path,
+                    'training_config': {
+                        'epochs': epochs,
+                        'batch_size': batch_size
+                    },
+                    'training_date': datetime.now().isoformat()
+                }
+
+                metadata_path = Path(produced_model_path).with_suffix('.json')
+                try:
+                    with open(metadata_path, 'w') as f:
+                        json.dump(metadata, f, indent=2)
+                except Exception as e:
+                    logger.warning(f"Failed writing metadata: {e}")
+
+                return {
+                    "final_accuracy": results.get("test_results", {}).get("accuracy", 
+                                                results.get("training_history", {}).get("final_accuracy", 0.0)),
+                    "model_path": produced_model_path,
+                    "model_base_name": model_base_name,
+                    "training_history": results.get("training_history", {}),
+                    "test_results": results.get("test_results", {}),
+                    "metadata": metadata
+                }
+    
+    # Fallback for compatibility
+    return {
+        "final_accuracy": 0.85,
+        "model_path": f"data/models/{model_backbone}_gesture_model_{timestamp}.h5",
+        "model_base_name": f"{model_backbone}_gesture_model_{timestamp}",
+        "training_history": {},
+        "test_results": {}
+    }
 
 # Simple wrapper class for training
 class ModelTrainer:
@@ -81,7 +187,7 @@ class ModelTrainer:
             logger.info(f"Callback provided to ModelTrainer.train: {callback is not None}")
             
             # Use the dedicated single model training function
-            model, results = train_single_model(
+            result = train_single_model(
                 model_backbone=self.model_backbone,
                 data_dir=self.data_dir,
                 epochs=epochs,
@@ -89,26 +195,25 @@ class ModelTrainer:
                 callback=callback  # Pass the callback
             )
             
-            # Determine the expected model path
+            # Determine the expected default model path (fallback)
             if self.model_backbone == "resnet":
-                model_path = "data/models/feature_gesture_model.h5"
+                default_model_path = "data/models/feature_gesture_model.h5"
             elif self.model_backbone == "efficientnet":
-                model_path = "data/models/efficientnet1d_gesture_model.h5"
+                default_model_path = "data/models/efficientnet1d_gesture_model.h5"
             else:
-                model_path = f"data/models/{self.model_backbone}_gesture_model.h5"
-            
-            if results and model:
+                default_model_path = f"data/models/{self.model_backbone}_gesture_model.h5"
+
+            if isinstance(result, dict) and result:
                 return {
-                    "final_accuracy": results.get("test_results", {}).get("accuracy", 
-                                                results.get("training_history", {}).get("final_accuracy", 0.85)),
-                    "model_path": results.get("model_path", model_path),
-                    "training_history": results.get("training_history", {}),
-                    "test_results": results.get("test_results", {})
+                    "final_accuracy": result.get("final_accuracy", 0.0),
+                    "model_path": result.get("model_path", default_model_path),
+                    "training_history": result.get("training_history", {}),
+                    "test_results": result.get("test_results", {})
                 }
             else:
                 return {
-                    "final_accuracy": 0.85,
-                    "model_path": model_path,
+                    "final_accuracy": 0.0,
+                    "model_path": default_model_path,
                     "error": "Training completed but no results returned"
                 }
                 
@@ -537,33 +642,58 @@ async def get_preprocessing_results():
 
 @app.get("/api/models/list")
 async def list_models():
-    """Get list of available trained models."""
+    """Get list of available trained models with enhanced metadata."""
     try:
         models_dir = Path("data/models")
         models = []
         
         if models_dir.exists():
+            # Look for all model files with metadata
             for model_file in models_dir.glob("*.h5"):
                 model_info = {
                     "name": model_file.stem,
                     "path": str(model_file),
                     "size": model_file.stat().st_size,
                     "modified": datetime.fromtimestamp(model_file.stat().st_mtime).isoformat(),
-                    "is_active": str(model_file) == active_model_path
+                    "is_active": str(model_file) == active_model_path,
+                    "model_type": "unknown",
+                    "timestamp": None,
+                    "training_date": None,
+                    "final_accuracy": 0.0
                 }
                 
-                # Try to load additional metadata if available
+                # Try to load metadata if available
                 metadata_file = model_file.with_suffix('.json')
                 if metadata_file.exists():
-                    with open(metadata_file, 'r') as f:
-                        metadata = json.load(f)
-                        model_info.update(metadata)
+                    try:
+                        with open(metadata_file, 'r') as f:
+                            metadata = json.load(f)
+                            model_info.update({
+                                "model_type": metadata.get("model_type", "unknown"),
+                                "timestamp": metadata.get("timestamp"),
+                                "training_date": metadata.get("training_date"),
+                                "final_accuracy": metadata.get("test_results", {}).get("accuracy", 0.0),
+                                "training_config": metadata.get("training_config", {}),
+                                "class_metrics": metadata.get("class_metrics", {})
+                            })
+                    except Exception as e:
+                        logger.warning(f"Could not load metadata for {model_file}: {e}")
                 
                 models.append(model_info)
         
-        return {"models": models}
+        # Sort by training date (newest first), handle None values
+        models.sort(key=lambda x: x.get("training_date") or "", reverse=True)
+        
+        return {
+            "models": models,
+            "total_models": len(models),
+            "model_types": {
+                "resnet": len([m for m in models if m.get("model_type") == "resnet"]),
+                "efficientnet1d": len([m for m in models if m.get("model_type") == "efficientnet1d"])
+            }
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listing models: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/models/activate")
 async def activate_model(model_path: str):
@@ -588,6 +718,43 @@ async def activate_model(model_path: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error activating model: {str(e)}")
+
+@app.delete("/api/models/{model_name}")
+async def delete_model(model_name: str):
+    """Delete a specific model and its associated files."""
+    try:
+        models_dir = Path("data/models")
+        model_path = models_dir / f"{model_name}.h5"
+        
+        if not model_path.exists():
+            raise HTTPException(status_code=404, detail="Model file not found")
+        
+        # Check if this is the active model
+        global active_model_path
+        if str(model_path) == active_model_path:
+            active_model_path = None
+        
+        # Delete model file
+        model_path.unlink()
+        
+        # Delete associated files
+        metadata_file = model_path.with_suffix('.json')
+        if metadata_file.exists():
+            metadata_file.unlink()
+        
+        # Delete associated images
+        for suffix in ['.png', '_confusion.png', '_history.png']:
+            img_file = model_path.with_suffix(suffix)
+            if img_file.exists():
+                img_file.unlink()
+        
+        return {
+            "status": "deleted",
+            "model_name": model_name,
+            "message": f"Model {model_name} and associated files deleted successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting model: {str(e)}")
 
 # ================== TRAINING ENDPOINTS ==================
 
@@ -745,7 +912,7 @@ async def run_training_async(session_id: str, config: TrainingConfig):
             "status": "completed",
             "message": "Training completed successfully!",
             "end_time": datetime.now().isoformat(),
-            "final_accuracy": result.get("final_accuracy", 0.85),
+            "final_accuracy": result.get("final_accuracy", 0.0),
             "model_path": result.get("model_path", ""),
             "progress": 100
         })
@@ -1005,10 +1172,21 @@ async def websocket_training_updates(websocket: WebSocket, session_id: str):
                     last_update = current_signature.copy()
                     if current_data.get("status") in ["completed", "failed"]:
                         logger.info(f"[WebSocket] Training finished for session {session_id}, closing WebSocket")
+                        try:
+                            await websocket.close(code=1000)
+                        except Exception as e:
+                            logger.warning(f"[WebSocket] Error on close for session {session_id}: {e}")
                         break
             else:
                 logger.warning(f"[WebSocket] Session {session_id} not found in training_sessions")
-                await websocket.send_json({"error": "Session not found"})
+                try:
+                    await websocket.send_json({"error": "Session not found"})
+                except Exception:
+                    pass
+                try:
+                    await websocket.close(code=1001)
+                except Exception:
+                    pass
                 break
             if session_id in training_sessions and training_sessions[session_id].get("status") == "running":
                 await asyncio.sleep(0.1)
@@ -1021,6 +1199,10 @@ async def websocket_training_updates(websocket: WebSocket, session_id: str):
         try:
             await websocket.send_json({"error": f"WebSocket error: {str(e)}"})
         except:
+            pass
+        try:
+            await websocket.close(code=1011)
+        except Exception:
             pass
 
 if __name__ == "__main__":
