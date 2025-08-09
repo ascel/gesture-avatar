@@ -7,9 +7,14 @@ import {
   Button,
   TextField,
   Grid,
-  Alert,
   Chip,
   LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   CameraAlt,
@@ -17,6 +22,8 @@ import {
   Save,
   Refresh,
   Transform,
+  DeleteOutline,
+  CleaningServices,
 } from '@mui/icons-material';
 import Webcam from 'react-webcam';
 import axios from 'axios';
@@ -36,6 +43,9 @@ const DataCollection: React.FC = () => {
   const [samplesCollected, setSamplesCollected] = useState(0);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [availableGestures, setAvailableGestures] = useState<Record<string, any>>({});
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupOptions, setCleanupOptions] = useState({ deleteRaw: true, deleteProcessed: true });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; gesture?: string }>({ open: false });
 
   const videoConstraints = {
     width: 640,
@@ -90,33 +100,60 @@ const DataCollection: React.FC = () => {
         frame_data: imageSrc,
       });
 
-      const newCount = samplesCollected + 1;
-      setSamplesCollected(newCount);
-      
-      if (response.data.landmarks_count) {
-        setMessage({ 
-          type: 'success', 
-          text: `Captured sample ${newCount} with ${response.data.landmarks_count} landmarks` 
-        });
-      } else {
-        setMessage({ type: 'success', text: `Captured sample ${newCount}` });
-      }
+      setSamplesCollected((prev) => prev + 1);
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save sample' });
+      if (!isRecording) {
+        setMessage({ type: 'error', text: 'Failed to save sample' });
+      }
     }
-  }, [currentSession, samplesCollected]);
+  }, [currentSession, isRecording]);
+
+  const [recordDurationMs, setRecordDurationMs] = useState(10000);
+  const [recordIntervalMs, setRecordIntervalMs] = useState(500);
+  const [recordingProgress, setRecordingProgress] = useState(0);
+  const recordTimerRef = React.useRef<number | null>(null);
+  const recordTickerRef = React.useRef<number | null>(null);
+
+  const stopRecording = () => {
+    setIsRecording(false);
+    setRecordingProgress(0);
+    if (recordTickerRef.current) {
+      window.clearInterval(recordTickerRef.current);
+      recordTickerRef.current = null;
+    }
+    if (recordTimerRef.current) {
+      window.clearTimeout(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  };
 
   const startRecording = () => {
+    if (isRecording) return;
     setIsRecording(true);
-    const interval = setInterval(() => {
-      captureFrame();
-    }, 500); // Capture every 500ms
+    setRecordingProgress(0);
 
-    // Stop after 10 seconds
-    setTimeout(() => {
-      clearInterval(interval);
-      setIsRecording(false);
-    }, 10000);
+    // Schedule frame captures
+    const ticker = window.setInterval(() => {
+      captureFrame();
+    }, Math.max(100, recordIntervalMs));
+    recordTickerRef.current = ticker as unknown as number;
+
+    const startTs = Date.now();
+    // Progress updater
+    const progressTimer = window.setInterval(() => {
+      const elapsed = Date.now() - startTs;
+      const pct = Math.min(100, Math.round((elapsed / Math.max(1000, recordDurationMs)) * 100));
+      setRecordingProgress(pct);
+    }, 100);
+
+    // Hard stop timer
+    const stopper = window.setTimeout(() => {
+      if (recordTickerRef.current) window.clearInterval(recordTickerRef.current);
+      if (progressTimer) window.clearInterval(progressTimer);
+      stopRecording();
+    }, Math.max(1000, recordDurationMs));
+
+    recordTimerRef.current = stopper as unknown as number;
   };
 
   const endSession = () => {
@@ -146,6 +183,47 @@ const DataCollection: React.FC = () => {
     }
   };
 
+  const clearGesture = (name: string) => {
+    setConfirmDelete({ open: true, gesture: name });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete.gesture) return;
+    try {
+      const response = await axios.delete(`/api/data/gestures/${encodeURIComponent(confirmDelete.gesture)}`);
+      setMessage({ type: 'success', text: response.data.message || `Cleared data for ${confirmDelete.gesture}` });
+      setConfirmDelete({ open: false, gesture: undefined });
+      fetchAvailableGestures();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to clear data for ${confirmDelete.gesture}` });
+      setConfirmDelete({ open: false, gesture: undefined });
+    }
+  };
+
+  const openCleanup = () => setCleanupOpen(true);
+  const closeCleanup = () => setCleanupOpen(false);
+  const confirmCleanup = async () => {
+    if (!cleanupOptions.deleteRaw && !cleanupOptions.deleteProcessed) {
+      setMessage({ type: 'error', text: 'Select at least one option to clean' });
+      return;
+    }
+    try {
+      const response = await axios.post('/api/data/cleanup', {
+        delete_raw: cleanupOptions.deleteRaw,
+        delete_processed: cleanupOptions.deleteProcessed,
+      });
+      setMessage({ type: 'success', text: 'Cleanup completed' });
+      setCleanupOpen(false);
+      // Reset local state
+      setCurrentSession(null);
+      setIsRecording(false);
+      setSamplesCollected(0);
+      fetchAvailableGestures();
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Cleanup failed' });
+    }
+  };
+
   const predefinedGestures = ['fist', 'open_hand', 'peace', 'point', 'thumbs_up'];
 
   return (
@@ -154,11 +232,17 @@ const DataCollection: React.FC = () => {
         Data Collection
       </Typography>
 
-      {message && (
-        <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage(null)}>
-          {message.text}
-        </Alert>
-      )}
+      <Dialog open={Boolean(message)} onClose={() => setMessage(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {message?.type === 'success' ? 'Success' : message?.type === 'error' ? 'Error' : 'Info'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">{message?.text}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMessage(null)}>OK</Button>
+        </DialogActions>
+      </Dialog>
 
       <Grid container spacing={3}>
         {/* Webcam Feed */}
@@ -178,6 +262,21 @@ const DataCollection: React.FC = () => {
                   videoConstraints={videoConstraints}
                   style={{ borderRadius: '8px' }}
                 />
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 10,
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                    color: 'white',
+                    px: 1.5,
+                    py: 0.5,
+                    borderRadius: 1,
+                    fontWeight: 600,
+                  }}
+                >
+                  {samplesCollected}
+                </Box>
                 {isRecording && (
                   <Box
                     sx={{
@@ -268,13 +367,21 @@ const DataCollection: React.FC = () => {
                     fullWidth
                     variant="contained"
                     startIcon={isRecording ? <Stop /> : <CameraAlt />}
-                    onClick={isRecording ? () => setIsRecording(false) : startRecording}
-                    disabled={isRecording}
+                    onClick={isRecording ? stopRecording : startRecording}
                     sx={{ mb: 1 }}
                     color={isRecording ? 'error' : 'primary'}
                   >
-                    {isRecording ? 'Recording...' : 'Start Recording (10s)'}
+                    {isRecording ? 'Stop Recording' : `Start Recording (${Math.round(recordDurationMs/1000)}s)`}
                   </Button>
+
+                  {isRecording && (
+                    <Box sx={{ mb: 2 }}>
+                      <LinearProgress variant="determinate" value={recordingProgress} />
+                      <Typography variant="caption" color="textSecondary">
+                        {recordingProgress}%
+                      </Typography>
+                    </Box>
+                  )}
 
                   <Button
                     fullWidth
@@ -286,6 +393,27 @@ const DataCollection: React.FC = () => {
                   >
                     Capture Single Frame
                   </Button>
+
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                    <TextField
+                      label="Duration (s)"
+                      type="number"
+                      size="small"
+                      value={Math.round(recordDurationMs/1000)}
+                      onChange={(e) => setRecordDurationMs(Math.max(1, Number(e.target.value)) * 1000)}
+                      sx={{ width: 140 }}
+                      inputProps={{ min: 1 }}
+                    />
+                    <TextField
+                      label="Interval (ms)"
+                      type="number"
+                      size="small"
+                      value={recordIntervalMs}
+                      onChange={(e) => setRecordIntervalMs(Math.max(100, Number(e.target.value)))}
+                      sx={{ width: 160 }}
+                      inputProps={{ min: 100, step: 50 }}
+                    />
+                  </Box>
 
                   <Button
                     fullWidth
@@ -314,9 +442,20 @@ const DataCollection: React.FC = () => {
               ) : (
                 Object.entries(availableGestures).map(([name, data]: [string, any]) => (
                   <Box key={name} sx={{ mb: 1 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
                       <Typography variant="body2">{name}</Typography>
-                      <Chip label={`${data.sample_count} samples`} size="small" />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip label={`${data.sample_count} samples`} size="small" />
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="error"
+                          startIcon={<DeleteOutline />}
+                          onClick={() => clearGesture(name)}
+                        >
+                          Clear
+                        </Button>
+                      </Box>
                     </Box>
                   </Box>
                 ))
@@ -343,10 +482,66 @@ const DataCollection: React.FC = () => {
               >
                 Convert Existing Data
               </Button>
+
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<CleaningServices />}
+                onClick={openCleanup}
+                sx={{ mt: 1 }}
+                size="small"
+                color="warning"
+              >
+                Flush All Data
+              </Button>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
+
+      <Dialog open={cleanupOpen} onClose={closeCleanup} maxWidth="xs" fullWidth>
+        <DialogTitle>Flush Collected Data</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            This will permanently delete selected data.
+          </Typography>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={cleanupOptions.deleteRaw}
+                onChange={(e) => setCleanupOptions((o) => ({ ...o, deleteRaw: e.target.checked }))}
+              />
+            }
+            label="Delete raw collected samples"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={cleanupOptions.deleteProcessed}
+                onChange={(e) => setCleanupOptions((o) => ({ ...o, deleteProcessed: e.target.checked }))}
+              />
+            }
+            label="Delete processed datasets and artifacts"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeCleanup}>Cancel</Button>
+          <Button onClick={confirmCleanup} color="warning" variant="contained">Flush</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={confirmDelete.open} onClose={() => setConfirmDelete({ open: false, gesture: undefined })} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Gesture Data</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Delete all samples for gesture "{confirmDelete.gesture}"? This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete({ open: false, gesture: undefined })}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">Delete</Button>
+        </DialogActions>
+      </Dialog>
 
       <style>{`
         @keyframes blink {
