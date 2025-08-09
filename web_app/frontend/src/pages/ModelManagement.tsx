@@ -177,10 +177,10 @@ const ModelManagement: React.FC = () => {
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                EfficientNet Models
+                EfficientNet1D Models
               </Typography>
               <Typography variant="h4">
-                {models.filter(m => m.model_type === 'efficientnet').length}
+                {models.filter(m => m.model_type === 'efficientnet1d').length}
               </Typography>
             </CardContent>
           </Card>
