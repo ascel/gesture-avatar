@@ -16,6 +16,11 @@ import {
   TableRow,
   Paper,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Storage,
@@ -40,6 +45,8 @@ const ModelManagement: React.FC = () => {
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Model | null>(null);
 
   useEffect(() => {
     fetchModels();
@@ -87,8 +94,32 @@ const ModelManagement: React.FC = () => {
         return 'primary';
       case 'efficientnet':
         return 'secondary';
+      case 'efficientnet1d':
+        return 'warning';
       default:
         return 'default';
+    }
+  };
+
+  const requestDeleteModel = (model: Model) => {
+    setPendingDelete(model);
+    setConfirmOpen(true);
+  };
+
+  const handleCloseConfirm = () => {
+    setConfirmOpen(false);
+    setPendingDelete(null);
+  };
+
+  const deleteModel = async () => {
+    if (!pendingDelete) return;
+    try {
+      await axios.delete(`/api/models/${encodeURIComponent(pendingDelete.name)}`);
+      setMessage({ type: 'success', text: `Deleted model: ${pendingDelete.name}` });
+      handleCloseConfirm();
+      fetchModels();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to delete model: ${pendingDelete.name}` });
     }
   };
 
@@ -265,6 +296,14 @@ const ModelManagement: React.FC = () => {
                           <IconButton size="small" color="primary">
                             <Download />
                           </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => requestDeleteModel(model)}
+                            aria-label={`Delete ${model.name}`}
+                          >
+                            <Delete />
+                          </IconButton>
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -275,6 +314,22 @@ const ModelManagement: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={confirmOpen} onClose={handleCloseConfirm}>
+        <DialogTitle>Delete Model</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {pendingDelete
+              ? `Are you sure you want to delete model "${pendingDelete.name}"? This action cannot be undone.`
+              : 'Are you sure you want to delete this model?'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConfirm}>Cancel</Button>
+          <Button onClick={deleteModel} color="error" variant="contained">Delete</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Information Card */}
       <Card sx={{ mt: 3 }}>
