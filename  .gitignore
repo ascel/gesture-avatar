@@ -64,3 +64,4 @@ web_app/frontend/build/
 
 # backend models
 web_app/backend/data/models/
+!web_app/backend/data/models/.gitkeep
