@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 
-from .models import FeatureBasedGestureModel, ImageBasedGestureModel, EfficientNetGestureModel
+from .models import FeatureBasedGestureModel, ImageBasedGestureModel
 from ..utils.data_preprocessing import GestureDataPreprocessor
 
 
@@ -123,17 +123,21 @@ def train_feature_model(data_dir: str = "data/processed",
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred_classes, target_names=target_names))
     
-    # Save model and results
-    model_save_path = Path(model_save_dir) / "feature_gesture_model.h5"
-    model_save_path.parent.mkdir(parents=True, exist_ok=True)
+    # Save model and results (timestamped in runs/<timestamp>/)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(model_save_dir) / "runs" / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+    base_name = f"feature_gesture_model_{timestamp}"
+    model_save_path = run_dir / f"{base_name}.h5"
     
     model.save_model(str(model_save_path))
     
     # Save training results with enhanced metrics
     results = {
-        'model_type': 'resnet_feature_based',
+        'model_type': 'resnet',
         'architecture': 'ResNet-inspired with attention',
         'training_date': datetime.now().isoformat(),
+        'timestamp': timestamp,
         'model_path': str(model_save_path),
         'training_history': {
             'final_accuracy': float(history.history['accuracy'][-1]),
@@ -161,16 +165,23 @@ def train_feature_model(data_dir: str = "data/processed",
         ]
     }
     
-    results_path = model_save_path.parent / "feature_model_results.json"
+    # Write per-model metadata JSON next to the .h5 for UI listing
+    # Ensure val accuracy fields are present for UI sorting
+    results.setdefault('training_history', {})
+    th = results['training_history']
+    # Guard in case keys are missing
+    if 'final_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['final_val_accuracy'] = float(history.history['val_accuracy'][-1])
+    if 'best_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['best_val_accuracy'] = float(max(history.history['val_accuracy']))
+    metadata_path = model_save_path.with_suffix('.json')
+    with open(metadata_path, 'w') as f:
+        json.dump(results, f, indent=2)
+
+    # Also write a cumulative results file for backward compatibility (in parent models dir)
+    results_path = Path(model_save_dir) / "feature_model_results.json"
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
-    
-    # Plot training history
-    plot_training_history(history, model_save_path.parent / "feature_training_history.png")
-    
-    # Plot confusion matrix
-    plot_confusion_matrix(y_test, y_pred_classes, target_names, 
-                         model_save_path.parent / "feature_confusion_matrix.png")
     
     print(f"\n✅ Optimized model training completed!")
     print(f"📁 Model saved to: {model_save_path}")
@@ -245,6 +256,13 @@ def train_image_model(data_dir: str = "data/raw",
             ]
         }
         
+        # Ensure val accuracy fields exist for UI sorting
+        results.setdefault('training_history', {})
+        th = results['training_history']
+        if 'final_val_accuracy' not in th and 'val_accuracy' in history.history:
+            th['final_val_accuracy'] = float(history.history['val_accuracy'][-1])
+        if 'best_val_accuracy' not in th and 'val_accuracy' in history.history:
+            th['best_val_accuracy'] = float(max(history.history['val_accuracy']))
         results_path = model_save_path.parent / "image_model_results.json"
         with open(results_path, 'w') as f:
             json.dump(results, f, indent=2)
@@ -264,64 +282,6 @@ def train_image_model(data_dir: str = "data/raw",
         print(f"Error training image model: {e}")
         print("Make sure you have collected image data first.")
         return None, None
-
-
-def train_efficientnet_model(data_dir: str = "data/raw",
-                            model_save_dir: str = "data/models",
-                            epochs: int = 50):
-    """Train EfficientNet-based image gesture recognition model."""
-    print("🚀 Training EfficientNet Image-Based Gesture Model")
-    print("=" * 60)
-    preprocessor = GestureDataPreprocessor(raw_data_dir=data_dir)
-    try:
-        train_generator, val_generator, class_indices = preprocessor.create_image_dataset()
-        print(f"Training samples: {train_generator.samples}")
-        print(f"Validation samples: {val_generator.samples}")
-        print(f"Classes: {list(class_indices.keys())}")
-        model = EfficientNetGestureModel()
-        model.class_indices = class_indices
-        history = model.train(train_generator, val_generator, epochs)
-        model_save_path = Path(model_save_dir) / "efficientnet_gesture_model.h5"
-        model_save_path.parent.mkdir(parents=True, exist_ok=True)
-        model.save_model(str(model_save_path))
-        results = {
-            'model_type': 'efficientnet_image_based',
-            'architecture': 'EfficientNetB0',
-            'training_date': datetime.now().isoformat(),
-            'model_path': str(model_save_path),
-            'class_indices': class_indices,
-            'training_history': {
-                'final_accuracy': float(history.history['accuracy'][-1]),
-                'final_val_accuracy': float(history.history['val_accuracy'][-1]),
-                'final_loss': float(history.history['loss'][-1]),
-                'final_val_loss': float(history.history['val_loss'][-1]),
-                'epochs_trained': len(history.history['accuracy']),
-                'best_val_accuracy': float(max(history.history['val_accuracy'])),
-                'best_accuracy': float(max(history.history['accuracy']))
-            },
-            'optimization_features': [
-                'EfficientNetB0',
-                'GlobalAveragePooling',
-                'Adam optimizer',
-                'EarlyStopping',
-                'ModelCheckpoint',
-                'ReduceLROnPlateau'
-            ]
-        }
-        results_path = model_save_path.parent / "efficientnet_model_results.json"
-        with open(results_path, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"\n✅ EfficientNet model training completed!")
-        print(f"📁 Model saved to: {model_save_path}")
-        print(f"📊 Results saved to: {results_path}")
-        print(f"🏆 Best validation accuracy: {results['training_history']['best_val_accuracy']:.4f}")
-        print(f"🎯 Final training accuracy: {results['training_history']['final_accuracy']:.4f}")
-        return model, results
-    except Exception as e:
-        print(f"Error training EfficientNet model: {e}")
-        print("Make sure you have collected image data first.")
-        return None, None
-
 
 def train_efficientnet1d_model(data_dir: str = "data/processed", 
                               model_save_dir: str = "data/models", 
@@ -401,13 +361,18 @@ def train_efficientnet1d_model(data_dir: str = "data/processed",
     report = classification_report(y_test, y_pred_classes, target_names=target_names, output_dict=True)
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred_classes, target_names=target_names))
-    model_save_path = Path(model_save_dir) / "efficientnet1d_gesture_model.h5"
-    model_save_path.parent.mkdir(parents=True, exist_ok=True)
+    # Save EfficientNet1D model with timestamped filename in runs/<timestamp>/
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(model_save_dir) / "runs" / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+    base_name = f"efficientnet1d_gesture_model_{timestamp}"
+    model_save_path = run_dir / f"{base_name}.h5"
     model.save_model(str(model_save_path))
     results = {
-        'model_type': 'efficientnet1d_feature_based',
+        'model_type': 'efficientnet1d',
         'architecture': 'EfficientNet1D-inspired',
         'training_date': datetime.now().isoformat(),
+        'timestamp': timestamp,
         'model_path': str(model_save_path),
         'training_history': {
             'final_accuracy': float(history.history['accuracy'][-1]),
@@ -434,11 +399,24 @@ def train_efficientnet1d_model(data_dir: str = "data/processed",
             'ReduceLROnPlateau'
         ]
     }
-    results_path = model_save_path.parent / "efficientnet1d_model_results.json"
+    # Write per-model metadata next to the .h5
+    # Ensure val accuracy fields are present for UI sorting
+    results.setdefault('training_history', {})
+    th = results['training_history']
+    if 'final_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['final_val_accuracy'] = float(history.history['val_accuracy'][-1])
+    if 'best_val_accuracy' not in th and 'val_accuracy' in history.history:
+        th['best_val_accuracy'] = float(max(history.history['val_accuracy']))
+    metadata_path = model_save_path.with_suffix('.json')
+    with open(metadata_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    # Also keep legacy cumulative results file for compatibility (in parent models dir)
+    results_path = Path(model_save_dir) / "efficientnet1d_model_results.json"
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
     print(f"\n✅ EfficientNet1D model training completed!")
     print(f"📁 Model saved to: {model_save_path}")
+    print(f"📊 Metadata saved to: {metadata_path}")
     print(f"📊 Results saved to: {results_path}")
     print(f"🏆 Best validation accuracy: {results['training_history']['best_val_accuracy']:.4f}")
     print(f"🎯 Test accuracy: {results['test_results']['accuracy']:.4f}")
@@ -572,15 +550,7 @@ def main():
             print(f"  🏆 Best validation accuracy: {image_results['training_history']['best_val_accuracy']:.4f}")
             print(f"  🎯 Final training accuracy: {image_results['training_history']['final_accuracy']:.4f}")
         
-        # Train EfficientNet model (if data available)
-        print("\n3. 🦾 Training EfficientNet Image-Based Model...")
-        efficientnet_model, efficientnet_results = train_efficientnet_model(
-            epochs=50
-        )
-        if efficientnet_results:
-            print(f"✅ EfficientNet model training completed!")
-            print(f"  🏆 Best validation accuracy: {efficientnet_results['training_history']['best_val_accuracy']:.4f}")
-            print(f"  🎯 Final training accuracy: {efficientnet_results['training_history']['final_accuracy']:.4f}")
+        # Image-based EfficientNet (2D) training removed from flow
         
         # Train EfficientNet1D model (if data available)
         print("\n4. 🦾 Training EfficientNet1D Landmark Model...")

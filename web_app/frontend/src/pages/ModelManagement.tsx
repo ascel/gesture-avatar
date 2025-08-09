@@ -16,6 +16,11 @@ import {
   TableRow,
   Paper,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Storage,
@@ -34,12 +39,17 @@ interface Model {
   is_active: boolean;
   accuracy?: number;
   model_type?: string;
+  timestamp?: string;
+  training_date?: string;
+  final_accuracy?: number;
 }
 
 const ModelManagement: React.FC = () => {
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Model | null>(null);
 
   useEffect(() => {
     fetchModels();
@@ -49,7 +59,8 @@ const ModelManagement: React.FC = () => {
     try {
       setLoading(true);
       const response = await axios.get('/api/models/list');
-      setModels(response.data.models);
+      const ms: Model[] = response.data.models || [];
+      setModels(ms);
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to fetch models' });
     } finally {
@@ -87,10 +98,38 @@ const ModelManagement: React.FC = () => {
         return 'primary';
       case 'efficientnet':
         return 'secondary';
+      case 'efficientnet1d':
+        return 'warning';
       default:
         return 'default';
     }
   };
+
+  const requestDeleteModel = (model: Model) => {
+    setPendingDelete(model);
+    setConfirmOpen(true);
+  };
+
+  const handleCloseConfirm = () => {
+    setConfirmOpen(false);
+    setPendingDelete(null);
+  };
+
+  const deleteModel = async () => {
+    if (!pendingDelete) return;
+    try {
+      await axios.delete(`/api/models/${encodeURIComponent(pendingDelete.name)}`, {
+        params: { model_path: pendingDelete.path }
+      });
+      setMessage({ type: 'success', text: `Deleted model: ${pendingDelete.name}` });
+      handleCloseConfirm();
+      fetchModels();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to delete model: ${pendingDelete.name}` });
+    }
+  };
+
+  // No sorting controls; show final accuracy only
 
   return (
     <Box>
@@ -146,10 +185,10 @@ const ModelManagement: React.FC = () => {
           <Card>
             <CardContent>
               <Typography color="textSecondary" gutterBottom>
-                EfficientNet Models
+                EfficientNet1D Models
               </Typography>
               <Typography variant="h4">
-                {models.filter(m => m.model_type === 'efficientnet').length}
+                {models.filter(m => m.model_type === 'efficientnet1d').length}
               </Typography>
             </CardContent>
           </Card>
@@ -163,14 +202,16 @@ const ModelManagement: React.FC = () => {
             <Typography variant="h6">
               Available Models
             </Typography>
-            <Button
-              variant="outlined"
-              startIcon={<Refresh />}
-              onClick={fetchModels}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                startIcon={<Refresh />}
+                onClick={fetchModels}
+                disabled={loading}
+              >
+                Refresh
+              </Button>
+            </Box>
           </Box>
 
           {loading ? (
@@ -192,8 +233,8 @@ const ModelManagement: React.FC = () => {
                   <TableRow>
                     <TableCell>Model Name</TableCell>
                     <TableCell>Type</TableCell>
-                    <TableCell>Size</TableCell>
                     <TableCell>Accuracy</TableCell>
+                    <TableCell>Size</TableCell>
                     <TableCell>Modified</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Actions</TableCell>
@@ -215,20 +256,16 @@ const ModelManagement: React.FC = () => {
                         />
                       </TableCell>
                       <TableCell>
+                        {typeof model.final_accuracy === 'number' ? (
+                          <Chip size="small" color="success" label={`${(model.final_accuracy * 100).toFixed(2)}%`} />
+                        ) : (
+                          <Typography variant="body2" color="textSecondary">N/A</Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <Typography variant="body2">
                           {formatFileSize(model.size)}
                         </Typography>
-                      </TableCell>
-                      <TableCell>
-                        {model.accuracy ? (
-                          <Typography variant="body2">
-                            {(model.accuracy * 100).toFixed(2)}%
-                          </Typography>
-                        ) : (
-                          <Typography variant="body2" color="textSecondary">
-                            N/A
-                          </Typography>
-                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" color="textSecondary">
@@ -265,6 +302,14 @@ const ModelManagement: React.FC = () => {
                           <IconButton size="small" color="primary">
                             <Download />
                           </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => requestDeleteModel(model)}
+                            aria-label={`Delete ${model.name}`}
+                          >
+                            <Delete />
+                          </IconButton>
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -275,6 +320,22 @@ const ModelManagement: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={confirmOpen} onClose={handleCloseConfirm}>
+        <DialogTitle>Delete Model</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {pendingDelete
+              ? `Are you sure you want to delete model "${pendingDelete.name}"? This action cannot be undone.`
+              : 'Are you sure you want to delete this model?'}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseConfirm}>Cancel</Button>
+          <Button onClick={deleteModel} color="error" variant="contained">Delete</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Information Card */}
       <Card sx={{ mt: 3 }}>
