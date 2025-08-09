@@ -810,39 +810,89 @@ async def activate_model(model_path: str):
         raise HTTPException(status_code=500, detail=f"Error activating model: {str(e)}")
 
 @app.delete("/api/models/{model_name}")
-async def delete_model(model_name: str):
-    """Delete a specific model and its associated files."""
+async def delete_model(model_name: str, model_path: Optional[str] = None):
+    """Delete a specific model and its associated files.
+
+    Supports either an explicit model_path query param or a model_name stem.
+    When model_path is not provided, searches recursively under data/models for a matching filename.
+    """
     try:
         models_dir = Path("data/models")
-        model_path = models_dir / f"{model_name}.h5"
-        
-        if not model_path.exists():
+
+        resolved_path: Optional[Path] = None
+
+        # 1) Prefer explicit model_path if provided
+        if model_path:
+            candidate = Path(model_path)
+            if candidate.exists() and candidate.suffix == ".h5":
+                resolved_path = candidate
+            # if provided but doesn't exist, we'll fallback to search by name
+
+        # 2) Search recursively in models dir (e.g., runs/<timestamp>/)
+        if resolved_path is None and models_dir.exists():
+            candidates = []
+            for p in models_dir.rglob("*.h5"):
+                if p.stem == model_name or p.name == model_name or p.name == f"{model_name}.h5":
+                    candidates.append(p)
+            if len(candidates) == 1:
+                resolved_path = candidates[0]
+            elif len(candidates) > 1:
+                # pick the most recently modified
+                resolved_path = max(candidates, key=lambda p: p.stat().st_mtime)
+
+        if resolved_path is None or not resolved_path.exists():
             raise HTTPException(status_code=404, detail="Model file not found")
-        
-        # Check if this is the active model
+
+        # Determine if model is inside runs/ directory; if so, delete whole run folder
+        runs_dir = models_dir / "runs"
+        delete_dir = False
+        try:
+            # Python 3.9+: Path.is_relative_to
+            if resolved_path.parent.is_dir() and resolved_path.parent.is_relative_to(runs_dir):
+                delete_dir = True
+        except AttributeError:
+            # Fallback compatible approach
+            try:
+                delete_dir = str(resolved_path.parent.resolve()).startswith(str(runs_dir.resolve()))
+            except Exception:
+                delete_dir = False
+
+        # Clear active model if it resides in the same path we're deleting
         global active_model_path
-        if str(model_path) == active_model_path:
-            active_model_path = None
-        
-        # Delete model file
-        model_path.unlink()
-        
-        # Delete associated files
-        metadata_file = model_path.with_suffix('.json')
-        if metadata_file.exists():
-            metadata_file.unlink()
-        
-        # Delete associated images
-        for suffix in ['.png', '_confusion.png', '_history.png']:
-            img_file = model_path.with_suffix(suffix)
-            if img_file.exists():
-                img_file.unlink()
-        
+        if active_model_path:
+            try:
+                active_resolved = str(Path(active_model_path).resolve())
+                target_resolved = str((resolved_path.parent if delete_dir else resolved_path).resolve())
+                if active_resolved.startswith(target_resolved):
+                    active_model_path = None
+            except Exception:
+                if str(resolved_path) == active_model_path:
+                    active_model_path = None
+
+        if delete_dir:
+            # Delete the entire run directory containing the model
+            dir_to_delete = resolved_path.parent
+            deleted_target = str(dir_to_delete)
+            import shutil
+            shutil.rmtree(dir_to_delete, ignore_errors=True)
+        else:
+            # Delete only the single model file and nearby artifacts
+            resolved_path.unlink()
+
+            # Delete associated files next to the model file
+            metadata_file = resolved_path.with_suffix('.json')
+            if metadata_file.exists():
+                metadata_file.unlink()
+
         return {
             "status": "deleted",
             "model_name": model_name,
-            "message": f"Model {model_name} and associated files deleted successfully"
+            "model_path": str(resolved_path),
+            "deleted": deleted_target if delete_dir else str(resolved_path),
+            "message": "Model folder deleted successfully" if delete_dir else f"Model {model_name} and associated files deleted successfully"
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting model: {str(e)}")
 
