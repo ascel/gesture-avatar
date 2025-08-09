@@ -907,8 +907,9 @@ async def detect_gesture(request: InferenceRequest):
 async def get_dataset_info():
     """Get dataset information and statistics."""
     try:
-        raw_data_dir = Path("data/raw")
-        processed_data_dir = Path("data/processed")
+        # Use absolute paths relative to project root
+        project_root = Path(__file__).parent.parent.parent
+        backend_data_dir = Path(__file__).parent / "data"
         
         info = {
             "raw_data": {},
@@ -916,7 +917,8 @@ async def get_dataset_info():
             "total_samples": 0
         }
         
-        # Raw data info
+        # Raw data info - from backend's raw directory
+        raw_data_dir = backend_data_dir / "raw"
         if raw_data_dir.exists():
             for gesture_dir in raw_data_dir.iterdir():
                 if gesture_dir.is_dir():
@@ -924,12 +926,52 @@ async def get_dataset_info():
                     info["raw_data"][gesture_dir.name] = sample_count
                     info["total_samples"] += sample_count
         
-        # Processed data info
+        # Processed data info - from numpy arrays
+        processed_data_dir = backend_data_dir / "processed"
         if processed_data_dir.exists():
-            for gesture_dir in processed_data_dir.iterdir():
-                if gesture_dir.is_dir():
-                    sample_count = len(list(gesture_dir.glob("*.json")))
-                    info["processed_data"][gesture_dir.name] = sample_count
+            # Check if we have the numpy arrays
+            y_train_path = processed_data_dir / "y_train.npy"
+            y_val_path = processed_data_dir / "y_val.npy"
+            y_test_path = processed_data_dir / "y_test.npy"
+            
+            if y_train_path.exists() and y_val_path.exists() and y_test_path.exists():
+                try:
+                    import numpy as np
+                    y_train = np.load(y_train_path)
+                    y_val = np.load(y_val_path)
+                    y_test = np.load(y_test_path)
+                    
+                    # Count samples per gesture from the labels
+                    all_labels = np.concatenate([y_train, y_val, y_test])
+                    unique, counts = np.unique(all_labels, return_counts=True)
+                    
+                    # Load label encoder to map indices to gesture names
+                    label_encoder_path = processed_data_dir / "label_encoder.pkl"
+                    if label_encoder_path.exists():
+                        import joblib
+                        label_encoder = joblib.load(label_encoder_path)
+                        gesture_names = label_encoder.classes_
+                        
+                        for idx, count in zip(unique, counts):
+                            if idx < len(gesture_names):
+                                gesture_name = gesture_names[idx]
+                                info["processed_data"][gesture_name] = int(count)
+                except Exception as e:
+                    # Fallback to checking if we have any processed data
+                    if (processed_data_dir / "X_train.npy").exists():
+                        # If we have numpy arrays, count total samples
+                        X_train = np.load(processed_data_dir / "X_train.npy")
+                        X_val = np.load(processed_data_dir / "X_val.npy")
+                        X_test = np.load(processed_data_dir / "X_test.npy")
+                        total_processed = len(X_train) + len(X_val) + len(X_test)
+                        
+                        # Try to get gesture names from raw data
+                        if raw_data_dir.exists():
+                            for gesture_dir in raw_data_dir.iterdir():
+                                if gesture_dir.is_dir():
+                                    # Estimate samples per gesture (equal distribution)
+                                    gesture_count = total_processed // len(info["raw_data"])
+                                    info["processed_data"][gesture_dir.name] = gesture_count
         
         return info
     except Exception as e:
