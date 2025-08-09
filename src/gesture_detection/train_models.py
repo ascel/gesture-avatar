@@ -123,11 +123,12 @@ def train_feature_model(data_dir: str = "data/processed",
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred_classes, target_names=target_names))
     
-    # Save model and results (timestamped)
+    # Save model and results (timestamped in runs/<timestamp>/)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(model_save_dir) / "runs" / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"feature_gesture_model_{timestamp}"
-    model_save_path = Path(model_save_dir) / f"{base_name}.h5"
-    model_save_path.parent.mkdir(parents=True, exist_ok=True)
+    model_save_path = run_dir / f"{base_name}.h5"
     
     model.save_model(str(model_save_path))
     
@@ -169,8 +170,8 @@ def train_feature_model(data_dir: str = "data/processed",
     with open(metadata_path, 'w') as f:
         json.dump(results, f, indent=2)
 
-    # Also write a cumulative results file for backward compatibility
-    results_path = model_save_path.parent / "feature_model_results.json"
+    # Also write a cumulative results file for backward compatibility (in parent models dir)
+    results_path = Path(model_save_dir) / "feature_model_results.json"
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
     
@@ -345,11 +346,12 @@ def train_efficientnet1d_model(data_dir: str = "data/processed",
     report = classification_report(y_test, y_pred_classes, target_names=target_names, output_dict=True)
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred_classes, target_names=target_names))
-    # Save EfficientNet1D model with timestamped filename
+    # Save EfficientNet1D model with timestamped filename in runs/<timestamp>/
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(model_save_dir) / "runs" / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
     base_name = f"efficientnet1d_gesture_model_{timestamp}"
-    model_save_path = Path(model_save_dir) / f"{base_name}.h5"
-    model_save_path.parent.mkdir(parents=True, exist_ok=True)
+    model_save_path = run_dir / f"{base_name}.h5"
     model.save_model(str(model_save_path))
     results = {
         'model_type': 'efficientnet1d',
@@ -386,8 +388,8 @@ def train_efficientnet1d_model(data_dir: str = "data/processed",
     metadata_path = model_save_path.with_suffix('.json')
     with open(metadata_path, 'w') as f:
         json.dump(results, f, indent=2)
-    # Also keep legacy cumulative results file for compatibility
-    results_path = model_save_path.parent / "efficientnet1d_model_results.json"
+    # Also keep legacy cumulative results file for compatibility (in parent models dir)
+    results_path = Path(model_save_dir) / "efficientnet1d_model_results.json"
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
     print(f"\n✅ EfficientNet1D model training completed!")

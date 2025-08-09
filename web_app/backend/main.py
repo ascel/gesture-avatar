@@ -4,6 +4,7 @@ Provides API endpoints for data collection, preprocessing, training, and inferen
 """
 
 import os
+import shutil
 import json
 import asyncio
 import logging
@@ -361,6 +362,11 @@ class GestureLabel(BaseModel):
 class InferenceRequest(BaseModel):
     frame_data: str  # base64 encoded image
 
+class DataCleanupRequest(BaseModel):
+    delete_raw: bool = True
+    delete_processed: bool = True
+    gestures: Optional[List[str]] = None  # if provided, limit deletion to these gestures under raw
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
@@ -466,6 +472,90 @@ async def get_available_gestures():
         return {"gestures": gestures}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting gestures: {str(e)}")
+
+@app.delete("/api/data/gestures/{gesture_name}")
+async def delete_gesture_data(gesture_name: str):
+    """Delete all collected raw samples for a specific gesture."""
+    try:
+        gesture_dir = Path("data/raw") / gesture_name
+        if not gesture_dir.exists():
+            return {
+                "status": "completed",
+                "gesture": gesture_name,
+                "deleted_files": 0,
+                "message": "Gesture directory did not exist"
+            }
+
+        # Count files for reporting
+        deleted_files = len(list(gesture_dir.glob("*")))
+        # Remove the directory
+        shutil.rmtree(gesture_dir, ignore_errors=True)
+
+        return {
+            "status": "completed",
+            "gesture": gesture_name,
+            "deleted_files": deleted_files,
+            "message": f"Deleted {deleted_files} files for gesture '{gesture_name}'"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting gesture data: {str(e)}")
+
+@app.post("/api/data/cleanup")
+async def cleanup_dataset(request: DataCleanupRequest):
+    """Cleanup collected data. Supports selective gesture deletion and/or processed data reset."""
+    try:
+        report: Dict[str, Any] = {
+            "status": "completed",
+            "raw": {"deleted": 0, "gestures": []},
+            "processed": {"deleted": 0},
+            "notes": []
+        }
+
+        # Handle raw data cleanup
+        if request.delete_raw:
+            raw_dir = Path("data/raw")
+            if request.gestures:
+                for gesture in request.gestures:
+                    gesture_dir = raw_dir / gesture
+                    if gesture_dir.exists():
+                        file_count = len(list(gesture_dir.glob("**/*")))
+                        shutil.rmtree(gesture_dir, ignore_errors=True)
+                        report["raw"]["deleted"] += file_count
+                        report["raw"]["gestures"].append({"gesture": gesture, "deleted_files": file_count})
+                    else:
+                        report["raw"]["gestures"].append({"gesture": gesture, "deleted_files": 0, "message": "not found"})
+            else:
+                if raw_dir.exists():
+                    # Count files before deletion
+                    file_count = len([p for p in raw_dir.rglob("*") if p.is_file()])
+                    shutil.rmtree(raw_dir, ignore_errors=True)
+                    report["raw"]["deleted"] = file_count
+                # Recreate base directory
+                raw_dir.mkdir(parents=True, exist_ok=True)
+
+        # Handle processed data cleanup
+        if request.delete_processed:
+            processed_dir = Path("data/processed")
+            if processed_dir.exists():
+                file_count = len([p for p in processed_dir.rglob("*") if p.is_file()])
+                shutil.rmtree(processed_dir, ignore_errors=True)
+                report["processed"]["deleted"] = file_count
+            processed_dir.mkdir(parents=True, exist_ok=True)
+
+            # Remove preprocessing artifacts
+            for aux_file in [
+                Path("data/preprocessing_results.json"),
+                Path("data/preprocessing_config.json")
+            ]:
+                if aux_file.exists():
+                    try:
+                        aux_file.unlink()
+                    except Exception:
+                        pass
+
+        return report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error cleaning dataset: {str(e)}")
 
 # ================== PREPROCESSING ENDPOINTS ==================
 
@@ -648,8 +738,8 @@ async def list_models():
         models = []
         
         if models_dir.exists():
-            # Look for all model files with metadata
-            for model_file in models_dir.glob("*.h5"):
+            # Look for timestamped run models in runs/<timestamp>/
+            for model_file in (models_dir / "runs").rglob("*.h5") if (models_dir / "runs").exists() else []:
                 model_info = {
                     "name": model_file.stem,
                     "path": str(model_file),
@@ -830,7 +920,6 @@ async def run_training_async(session_id: str, config: TrainingConfig):
                     logger.error(f"[Callback] Error: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
-            
             def _update_session_sync(self, current_epoch, logs):
                 try:
                     if self.session_id in training_sessions and logs is not None:
