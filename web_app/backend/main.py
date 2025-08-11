@@ -327,40 +327,35 @@ async def convert_images_to_landmarks() -> int:
         return 0
 
 async def extract_landmarks_from_frame(frame: np.ndarray) -> List[Dict]:
-    """Extract hand landmarks from a frame."""
+    """Extract hand landmarks from a frame using MediaPipe Hands."""
     try:
-        # For now, create realistic dummy landmarks based on frame analysis
-        # This simulates hand detection until MediaPipe is properly configured
-        
-        # Get frame dimensions
-        height, width = frame.shape[:2]
-        
-        # Create 21 hand landmarks (MediaPipe hand model)
-        landmarks = []
-        
-        # Simulate hand detection in the center of the frame
-        center_x, center_y = width / 2, height / 2
-        
-        # Generate realistic hand landmark positions
-        for i in range(21):
-            # Add some variation to make landmarks look realistic
-            x = center_x + (i - 10) * 5 + np.random.normal(0, 2)
-            y = center_y + (i - 10) * 3 + np.random.normal(0, 2)
-            z = np.random.normal(0, 0.1)  # Small depth variation
-            
-            # Normalize coordinates to 0-1 range
-            x_norm = max(0, min(1, x / width))
-            y_norm = max(0, min(1, y / height))
-            z_norm = max(-0.5, min(0.5, z))
-            
-            landmarks.append({
-                'x': float(x_norm),
-                'y': float(y_norm),
-                'z': float(z_norm)
-            })
-        
+        # Lazily initialize a reusable MediaPipe Hands instance
+        global backend_hands
+        if 'backend_hands' not in globals() or backend_hands is None:
+            backend_hands = mp.solutions.hands.Hands(  # type: ignore[attr-defined]
+                static_image_mode=False,         # match inference pipeline
+                max_num_hands=1,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+
+        # Convert BGR to RGB for MediaPipe
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = backend_hands.process(rgb)
+
+        if not results or not results.multi_hand_landmarks:
+            return []
+
+        hand_landmarks = results.multi_hand_landmarks[0]
+        landmarks: List[Dict] = []
+        for lm in hand_landmarks.landmark:
+            landmarks.append({'x': float(lm.x), 'y': float(lm.y), 'z': float(lm.z)})
+
+        # Ensure exactly 21 landmarks (MediaPipe contract)
+        if len(landmarks) != 21:
+            return []
+
         return landmarks
-        
     except Exception as e:
         print(f"Error extracting landmarks: {e}")
         return []
@@ -396,7 +391,7 @@ class DataCleanupRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application on startup."""
-    global current_avatar_manager
+    global current_avatar_manager, backend_hands
     
     # Create necessary directories
     os.makedirs("data/raw", exist_ok=True)
@@ -410,6 +405,19 @@ async def startup_event():
         print("✓ Avatar manager initialized")
     except Exception as e:
         print(f"⚠ Error initializing avatar manager: {e}")
+
+    # Initialize MediaPipe Hands for backend data collection
+    try:
+        backend_hands = mp.solutions.hands.Hands(  # type: ignore[attr-defined]
+            static_image_mode=False,
+            max_num_hands=1,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        print("✓ MediaPipe Hands initialized for data collection")
+    except Exception as e:
+        backend_hands = None
+        print(f"⚠ Error initializing MediaPipe Hands: {e}")
 
 # Health check
 @app.get("/")
